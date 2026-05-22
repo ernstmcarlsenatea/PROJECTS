@@ -3,6 +3,8 @@ import { STORAGE_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { buildStructuredEdgePath, canUseAsSource, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames } from './graph.js';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 158;
 
 function clonePart(part) {
   return {
@@ -517,7 +519,7 @@ function App() {
                     type="button"
                     key={part.id}
                     className={`graph-node ${selected} ${sourceClass}`}
-                    style={{ left: position.x, top: position.y, '--node-color': color }}
+                    style={{ left: position.x, top: position.y, width: `${NODE_WIDTH}px`, minHeight: `${NODE_HEIGHT}px`, '--node-color': color }}
                     onClick={() => selectPart(part.id)}
                     onPointerDown={(event) => startDrag(event, part.id)}
                   >

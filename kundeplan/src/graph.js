@@ -119,13 +119,14 @@ export function getGraphLayout(parts) {
 }
 
 export function buildStructuredEdgePath(start, end, kind = 'source', lane = 0) {
-  const startX = start.x + 220;
-  const startY = start.y + 72;
+  const nodeWidth = 220;
+  const nodeHeight = 158;
+  const startX = start.x + nodeWidth;
+  const startY = start.y + nodeHeight / 2;
   const endX = end.x;
-  const endY = end.y + 72;
+  const endY = end.y + nodeHeight / 2;
   const direction = endX >= startX ? 1 : -1;
   const laneOffset = kind === 'source' ? -24 - lane * 10 : 24 + lane * 10;
-  const controlY = Math.min(startY, endY) + laneOffset;
   const pull = Math.max(60, Math.abs(endX - startX) * 0.35);
   const control1X = startX + direction * pull;
   const control2X = endX - direction * pull;

@@ -321,6 +321,7 @@ body::after {
   flex-direction: column;
   gap: 0.35rem;
   width: 220px;
+  min-height: 158px;
   padding: 1rem 1rem 0.9rem;
   text-align: left;
   background: var(--node-color, #fff);
