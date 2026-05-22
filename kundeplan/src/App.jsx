@@ -102,7 +102,14 @@ function App() {
   const graphStageRef = useRef(null);
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
-  const graph = useMemo(() => getGraphLayout(state.parts), [state.parts]);
+  const displayParts = useMemo(() => {
+    if (!draft || state.parts.some((part) => part.id === draft.id)) {
+      return state.parts;
+    }
+
+    return [...state.parts, draft];
+  }, [state.parts, draft]);
+  const graph = useMemo(() => getGraphLayout(displayParts), [displayParts]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
