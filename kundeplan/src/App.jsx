@@ -1,16 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { STORAGE_KEY, createEmptyDraft, createId, demoParts } from './data.js';
-import { buildStructuredEdgePath, canUseAsSource, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames } from './graph.js';
+import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 158;
+const ANCHOR_LABELS = {
+  left: 'Left',
+  right: 'Right',
+  top: 'Top',
+  bottom: 'Bottom',
+};
 
 function clonePart(part) {
+  const dependencyAnchors = Object.fromEntries(
+    Object.entries(part.dependencyAnchors ?? {}).map(([dependencyId, anchor]) => [
+      dependencyId,
+      {
+        from: anchor?.from ?? 'right',
+        to: anchor?.to ?? 'left',
+      },
+    ]),
+  );
+
   return {
     ...part,
-    dependencies: [...part.dependencies],
+    dependencies: [...(part.dependencies ?? [])],
     position: { ...(part.position ?? { x: 140, y: 140 }) },
+    sourceAnchor: {
+      from: part.sourceAnchor?.from ?? 'right',
+      to: part.sourceAnchor?.to ?? 'left',
+    },
+    dependencyAnchors,
   };
 }
 
@@ -60,8 +81,12 @@ function DetailLine({ label, value }) {
 function App() {
   const [state, setState] = useState(() => loadState());
   const [connectionHoverId, setConnectionHoverId] = useState(null);
+  const [draggingNodeId, setDraggingNodeId] = useState(null);
+  const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
   const historyRef = useRef({ past: [], future: [] });
   const connectionStartRef = useRef(null);
+  const dragRef = useRef(null);
+  const suppressClickRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -86,6 +111,17 @@ function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   });
+
+  useEffect(() => {
+    function onEscape(event) {
+      if (event.key === 'Escape') {
+        setIsBoardFullscreen(false);
+      }
+    }
+
+    window.addEventListener('keydown', onEscape);
+    return () => window.removeEventListener('keydown', onEscape);
+  }, []);
 
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
@@ -121,6 +157,15 @@ function App() {
   }, [state.parts]);
 
   const selectedId = draft?.id ?? state.selectedId;
+
+  function suggestAnchors(sourceId, targetId) {
+    const source = graph.positions.get(sourceId);
+    const target = graph.positions.get(targetId);
+    if (!source || !target) {
+      return { from: 'right', to: 'left' };
+    }
+    return getSuggestedAnchorSides(source, target);
+  }
 
   function commit(updater, { history = true } = {}) {
     setState((current) => {
@@ -163,6 +208,131 @@ function App() {
     setState((current) => ({ ...current, draft: nextDraft }));
   }
 
+  function updateSourceAnchor(sideKey, side) {
+    if (!draft) {
+      return;
+    }
+
+    const nextAnchor = {
+      from: draft.sourceAnchor?.from ?? 'right',
+      to: draft.sourceAnchor?.to ?? 'left',
+      [sideKey]: side,
+    };
+    updateDraft('sourceAnchor', nextAnchor);
+  }
+
+  function updateDependencyAnchor(dependencyId, sideKey, side) {
+    if (!draft) {
+      return;
+    }
+
+    const nextAnchors = {
+      ...(draft.dependencyAnchors ?? {}),
+      [dependencyId]: {
+        from: draft.dependencyAnchors?.[dependencyId]?.from ?? 'right',
+        to: draft.dependencyAnchors?.[dependencyId]?.to ?? 'left',
+        [sideKey]: side,
+      },
+    };
+    updateDraft('dependencyAnchors', nextAnchors);
+  }
+
+  function beginNodeDrag(partId, event) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    if (event.target.closest('.graph-handle')) {
+      return;
+    }
+
+    const nodePosition = graph.positions.get(partId);
+    if (!nodePosition) {
+      return;
+    }
+
+    const pointerX = event.clientX;
+    const pointerY = event.clientY;
+    dragRef.current = {
+      partId,
+      startX: nodePosition.x,
+      startY: nodePosition.y,
+      pointerX,
+      pointerY,
+      moved: false,
+      startState: cloneAppState(state),
+    };
+    setDraggingNodeId(partId);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveNode(partId, nextX, nextY) {
+    setState((current) => {
+      let changed = false;
+      const parts = current.parts.map((part) => {
+        if (part.id !== partId) {
+          return part;
+        }
+
+        const clampedX = Math.max(24, Math.round(nextX));
+        const clampedY = Math.max(24, Math.round(nextY));
+        const same = part.position?.x === clampedX && part.position?.y === clampedY;
+        if (same) {
+          return part;
+        }
+        changed = true;
+        return { ...part, position: { x: clampedX, y: clampedY } };
+      });
+
+      if (!changed) {
+        return current;
+      }
+
+      const draft = current.draft?.id === partId
+        ? { ...current.draft, position: { x: Math.max(24, Math.round(nextX)), y: Math.max(24, Math.round(nextY)) } }
+        : current.draft;
+
+      return { ...current, parts, draft };
+    });
+  }
+
+  function onNodePointerMove(event) {
+    const dragging = dragRef.current;
+    if (!dragging) {
+      return;
+    }
+
+    const dx = event.clientX - dragging.pointerX;
+    const dy = event.clientY - dragging.pointerY;
+    if (!dragging.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      dragging.moved = true;
+    }
+
+    if (!dragging.moved) {
+      return;
+    }
+
+    moveNode(dragging.partId, dragging.startX + dx, dragging.startY + dy);
+  }
+
+  function endNodeDrag(event) {
+    const dragging = dragRef.current;
+    if (!dragging) {
+      return;
+    }
+
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+
+    if (dragging.moved) {
+      historyRef.current.past.push(dragging.startState);
+      historyRef.current.future = [];
+      suppressClickRef.current = dragging.partId;
+    }
+
+    dragRef.current = null;
+    setDraggingNodeId(null);
+  }
+
   function savePart(event) {
     event.preventDefault();
     if (!draft?.name.trim()) {
@@ -182,6 +352,21 @@ function App() {
       sourceId: draft.sourceId || null,
       dependencies: [...new Set((draft.dependencies || []).filter((dependencyId) => dependencyId !== targetId))],
       position: draft.position ?? { x: 140, y: 140 },
+      sourceAnchor: {
+        from: ANCHOR_SIDES.includes(draft.sourceAnchor?.from) ? draft.sourceAnchor.from : 'right',
+        to: ANCHOR_SIDES.includes(draft.sourceAnchor?.to) ? draft.sourceAnchor.to : 'left',
+      },
+      dependencyAnchors: Object.fromEntries(
+        Object.entries(draft.dependencyAnchors ?? {})
+          .filter(([dependencyId]) => (draft.dependencies || []).includes(dependencyId))
+          .map(([dependencyId, anchor]) => [
+            dependencyId,
+            {
+              from: ANCHOR_SIDES.includes(anchor?.from) ? anchor.from : 'right',
+              to: ANCHOR_SIDES.includes(anchor?.to) ? anchor.to : 'left',
+            },
+          ]),
+      ),
     };
 
     const exists = state.parts.some((part) => part.id === targetId);
@@ -208,6 +393,9 @@ function App() {
         ...part,
         sourceId: part.sourceId === removedId ? removedSourceId : part.sourceId,
         dependencies: part.dependencies.filter((dependencyId) => dependencyId !== removedId),
+        dependencyAnchors: Object.fromEntries(
+          Object.entries(part.dependencyAnchors ?? {}).filter(([dependencyId]) => dependencyId !== removedId),
+        ),
       }));
 
     const nextSelected = parts[0]?.id ?? null;
@@ -255,14 +443,23 @@ function App() {
       const fromId = sourceId;
       const parts = current.parts.map((part) => {
         if (mode === 'source' && part.id === targetId) {
-          return { ...part, sourceId: fromId };
+          const defaultAnchor = suggestAnchors(fromId, targetId);
+          return { ...part, sourceId: fromId, sourceAnchor: defaultAnchor };
         }
 
         if (mode === 'dependency' && part.id === targetId) {
           if (part.dependencies.includes(fromId)) {
             return part;
           }
-          return { ...part, dependencies: [...part.dependencies, fromId] };
+          const defaultAnchor = suggestAnchors(fromId, targetId);
+          return {
+            ...part,
+            dependencies: [...part.dependencies, fromId],
+            dependencyAnchors: {
+              ...(part.dependencyAnchors ?? {}),
+              [fromId]: part.dependencyAnchors?.[fromId] ?? defaultAnchor,
+            },
+          };
         }
 
         return part;
@@ -281,16 +478,29 @@ function App() {
   function removeDependency(partId, dependencyId) {
     commit((current) => ({
       ...current,
-      parts: current.parts.map((part) => (part.id === partId ? { ...part, dependencies: part.dependencies.filter((id) => id !== dependencyId) } : part)),
-      draft: current.draft?.id === partId ? { ...current.draft, dependencies: current.draft.dependencies.filter((id) => id !== dependencyId) } : current.draft,
+      parts: current.parts.map((part) => {
+        if (part.id !== partId) {
+          return part;
+        }
+        const dependencyAnchors = { ...(part.dependencyAnchors ?? {}) };
+        delete dependencyAnchors[dependencyId];
+        return { ...part, dependencies: part.dependencies.filter((id) => id !== dependencyId), dependencyAnchors };
+      }),
+      draft: current.draft?.id === partId
+        ? {
+            ...current.draft,
+            dependencies: current.draft.dependencies.filter((id) => id !== dependencyId),
+            dependencyAnchors: Object.fromEntries(Object.entries(current.draft.dependencyAnchors ?? {}).filter(([id]) => id !== dependencyId)),
+          }
+        : current.draft,
     }));
   }
 
   function removeSourceLink(partId) {
     commit((current) => ({
       ...current,
-      parts: current.parts.map((part) => (part.id === partId ? { ...part, sourceId: null } : part)),
-      draft: current.draft?.id === partId ? { ...current.draft, sourceId: null } : current.draft,
+      parts: current.parts.map((part) => (part.id === partId ? { ...part, sourceId: null, sourceAnchor: { from: 'right', to: 'left' } } : part)),
+      draft: current.draft?.id === partId ? { ...current.draft, sourceId: null, sourceAnchor: { from: 'right', to: 'left' } } : current.draft,
     }));
   }
 
@@ -364,7 +574,7 @@ function App() {
       </section>
 
       <section className="workspace-grid">
-        <section className="panel board-panel">
+        <section className={`panel board-panel ${isBoardFullscreen ? 'is-fullscreen' : ''}`}>
           <div className="panel-header">
             <div>
               <p className="panel-kicker">Blueprint map</p>
@@ -379,6 +589,9 @@ function App() {
                 </select>
               </label>
               <span className="pill">{connectionInstruction}</span>
+              <button type="button" className="secondary-button" onClick={() => setIsBoardFullscreen((current) => !current)}>
+                {isBoardFullscreen ? 'Exit fullscreen' : 'Fullscreen map'}
+              </button>
               {state.connectingFromId ? (
                 <button type="button" className="secondary-button" onClick={cancelConnection}>
                   Cancel link
@@ -406,7 +619,13 @@ function App() {
                     return null;
                   }
 
-                  return <path key={`${part.id}-${part.sourceId}`} d={buildStructuredEdgePath(source, target, 'source', 0)} className={`edge-line edge-source ${part.id === selectedId ? 'is-highlighted' : ''}`} />;
+                  return (
+                    <path
+                      key={`${part.id}-${part.sourceId}`}
+                      d={buildStructuredEdgePath(source, target, 'source', 0, part.sourceAnchor)}
+                      className={`edge-line edge-source ${part.id === selectedId ? 'is-highlighted' : ''}`}
+                    />
+                  );
                 })}
                 {(() => {
                   const dependencyLaneCounts = new Map();
@@ -421,7 +640,13 @@ function App() {
                       const lane = dependencyLaneCounts.get(part.id) ?? 0;
                       dependencyLaneCounts.set(part.id, lane + 1);
 
-                      return <path key={`${part.id}-${dependencyId}`} d={buildStructuredEdgePath(source, target, 'dependency', lane)} className="edge-line edge-dependency" />;
+                      return (
+                        <path
+                          key={`${part.id}-${dependencyId}`}
+                          d={buildStructuredEdgePath(source, target, 'dependency', lane, part.dependencyAnchors?.[dependencyId])}
+                          className="edge-line edge-dependency"
+                        />
+                      );
                     }),
                   );
                 })()}
@@ -443,12 +668,22 @@ function App() {
                     type="button"
                     key={part.id}
                     data-part-id={part.id}
-                    className={`graph-node ${selected} ${sourceClass} ${state.connectingFromId === part.id ? 'is-connecting-from' : ''} ${connectionHoverId === part.id ? 'is-connect-target' : ''}`}
+                    className={`graph-node ${selected} ${sourceClass} ${state.connectingFromId === part.id ? 'is-connecting-from' : ''} ${connectionHoverId === part.id ? 'is-connect-target' : ''} ${draggingNodeId === part.id ? 'is-dragging' : ''}`}
                     style={{ left: position.x, top: position.y, width: `${NODE_WIDTH}px`, height: `${NODE_HEIGHT}px`, '--node-color': color }}
                     onClick={(event) => {
+                      const shouldSuppressClick = suppressClickRef.current === part.id;
+                      suppressClickRef.current = null;
+                      if (shouldSuppressClick) {
+                        event.stopPropagation();
+                        return;
+                      }
                       event.stopPropagation();
                       onNodeClick(part.id);
                     }}
+                    onPointerDown={(event) => beginNodeDrag(part.id, event)}
+                    onPointerMove={onNodePointerMove}
+                    onPointerUp={endNodeDrag}
+                    onPointerCancel={endNodeDrag}
                     onMouseEnter={() => {
                       if (state.connectingFromId && state.connectingFromId !== part.id) {
                         setConnectionHoverId(part.id);
@@ -515,7 +750,27 @@ function App() {
 
             <label>
               Source part
-              <select value={draft?.sourceId ?? ''} onChange={(event) => updateDraft('sourceId', event.target.value || null)}>
+              <select
+                value={draft?.sourceId ?? ''}
+                onChange={(event) => {
+                  if (!draft) {
+                    return;
+                  }
+
+                  const nextSourceId = event.target.value || null;
+                  const nextAnchor = nextSourceId ? suggestAnchors(nextSourceId, draft.id) : { from: 'right', to: 'left' };
+                  setState((current) => ({
+                    ...current,
+                    draft: current.draft
+                      ? {
+                          ...current.draft,
+                          sourceId: nextSourceId,
+                          sourceAnchor: nextAnchor,
+                        }
+                      : current.draft,
+                  }));
+                }}
+              >
                 <option value="">No source / root part</option>
                 {state.parts
                   .filter((part) => part.id !== draft?.id)
@@ -526,6 +781,33 @@ function App() {
                   ))}
               </select>
             </label>
+
+            {draft?.sourceId ? (
+              <div className="link-anchor-editor">
+                <div className="picker-header">
+                  <span>Source link endpoints</span>
+                  <span className="hint">Choose which side the source line connects to</span>
+                </div>
+                <div className="form-row">
+                  <label>
+                    Start side on source box
+                    <select value={draft.sourceAnchor?.from ?? 'right'} onChange={(event) => updateSourceAnchor('from', event.target.value)}>
+                      {ANCHOR_SIDES.map((side) => (
+                        <option value={side} key={side}>{ANCHOR_LABELS[side]}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    End side on this box
+                    <select value={draft.sourceAnchor?.to ?? 'left'} onChange={(event) => updateSourceAnchor('to', event.target.value)}>
+                      {ANCHOR_SIDES.map((side) => (
+                        <option value={side} key={side}>{ANCHOR_LABELS[side]}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+            ) : null}
 
             <label>
               Notes
@@ -560,7 +842,23 @@ function App() {
                             const nextDependencies = event.target.checked
                               ? [...draft.dependencies, part.id]
                               : draft.dependencies.filter((dependencyId) => dependencyId !== part.id);
-                            updateDraft('dependencies', nextDependencies);
+                            const nextDependencyAnchors = { ...(draft.dependencyAnchors ?? {}) };
+                            if (event.target.checked) {
+                              nextDependencyAnchors[part.id] = nextDependencyAnchors[part.id] ?? suggestAnchors(part.id, draft.id);
+                            } else {
+                              delete nextDependencyAnchors[part.id];
+                            }
+
+                            setState((current) => ({
+                              ...current,
+                              draft: current.draft
+                                ? {
+                                    ...current.draft,
+                                    dependencies: nextDependencies,
+                                    dependencyAnchors: nextDependencyAnchors,
+                                  }
+                                : current.draft,
+                            }));
                           }}
                         />
                         <span>{part.name}</span>
@@ -569,6 +867,44 @@ function App() {
                   })}
               </div>
             </div>
+
+            {draft?.dependencies?.length ? (
+              <div className="link-anchor-editor">
+                <div className="picker-header">
+                  <span>Dependency line endpoints</span>
+                  <span className="hint">Set where each dependency line starts and ends</span>
+                </div>
+                <div className="dependency-anchor-list">
+                  {draft.dependencies.map((dependencyId) => {
+                    const dependencyName = partsMap.get(dependencyId)?.name ?? dependencyId;
+                    const anchor = draft.dependencyAnchors?.[dependencyId] ?? suggestAnchors(dependencyId, draft.id);
+                    return (
+                      <div className="dependency-anchor-item" key={dependencyId}>
+                        <div className="dependency-anchor-title">{dependencyName}</div>
+                        <div className="form-row">
+                          <label>
+                            Start side on dependency box
+                            <select value={anchor.from} onChange={(event) => updateDependencyAnchor(dependencyId, 'from', event.target.value)}>
+                              {ANCHOR_SIDES.map((side) => (
+                                <option value={side} key={side}>{ANCHOR_LABELS[side]}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            End side on this box
+                            <select value={anchor.to} onChange={(event) => updateDependencyAnchor(dependencyId, 'to', event.target.value)}>
+                              {ANCHOR_SIDES.map((side) => (
+                                <option value={side} key={side}>{ANCHOR_LABELS[side]}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
 
             <div className="form-actions">
               <button type="submit" className="primary-button">Save part</button>

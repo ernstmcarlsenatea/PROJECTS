@@ -271,6 +271,20 @@ body::after {
     linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.24));
 }
 
+.board-panel.is-fullscreen {
+  position: fixed;
+  inset: 0.8rem;
+  z-index: 60;
+  margin: 0;
+  width: auto;
+  max-width: none;
+  background: rgba(255, 252, 244, 0.98);
+}
+
+.board-panel.is-fullscreen .graph-stage {
+  min-height: calc(100vh - 11rem);
+}
+
 .graph-stage svg {
   position: absolute;
   inset: 0;
@@ -327,6 +341,11 @@ body::after {
   background: var(--node-color, #fff);
   box-shadow: 0 10px 0 rgba(36, 48, 70, 0.12);
   cursor: pointer;
+  cursor: grab;
+}
+
+.graph-node.is-dragging {
+  cursor: grabbing;
 }
 
 .graph-node:focus-visible {
@@ -492,6 +511,29 @@ button:focus-visible {
   border: 3px solid rgba(36, 48, 70, 0.18);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.58);
+}
+
+.link-anchor-editor {
+  padding: 0.9rem;
+  border: 3px solid rgba(36, 48, 70, 0.18);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.dependency-anchor-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dependency-anchor-item {
+  border: 2px dashed rgba(36, 48, 70, 0.2);
+  border-radius: 14px;
+  padding: 0.65rem;
+}
+
+.dependency-anchor-title {
+  font-weight: 900;
+  margin-bottom: 0.5rem;
 }
 
 .picker-header,
@@ -743,5 +785,13 @@ button:focus-visible {
 
   .graph-node {
     width: 200px;
+  }
+
+  .board-panel.is-fullscreen {
+    inset: 0.35rem;
+  }
+
+  .board-panel.is-fullscreen .graph-stage {
+    min-height: calc(100vh - 9.5rem);
   }
 }

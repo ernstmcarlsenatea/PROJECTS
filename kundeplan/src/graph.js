@@ -108,9 +108,10 @@ export function getGraphLayout(parts) {
 
   for (const [depth, items] of columns.entries()) {
     items.forEach((part, index) => {
+      const hasManualPosition = Number.isFinite(part.position?.x) && Number.isFinite(part.position?.y);
       positions.set(part.id, {
-        x: padding + depth * columnWidth,
-        y: padding + index * rowHeight,
+        x: hasManualPosition ? part.position.x : padding + depth * columnWidth,
+        y: hasManualPosition ? part.position.y : padding + index * rowHeight,
       });
     });
   }
@@ -118,23 +119,69 @@ export function getGraphLayout(parts) {
   return { nodes, positions, partsMap, width: Math.max(1200, columns.size * columnWidth + padding * 2), height: Math.max(760, parts.length * 170) };
 }
 
-export function buildStructuredEdgePath(start, end, kind = 'source', lane = 0) {
-  const nodeWidth = 220;
-  const nodeHeight = 158;
-  const startX = start.x + nodeWidth;
-  const startY = start.y + nodeHeight / 2;
-  const endX = end.x;
-  const endY = end.y + nodeHeight / 2;
-  const direction = endX >= startX ? 1 : -1;
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 158;
+
+export const ANCHOR_SIDES = ['left', 'right', 'top', 'bottom'];
+
+function getAnchorPoint(node, side) {
+  if (side === 'left') {
+    return { x: node.x, y: node.y + NODE_HEIGHT / 2 };
+  }
+  if (side === 'right') {
+    return { x: node.x + NODE_WIDTH, y: node.y + NODE_HEIGHT / 2 };
+  }
+  if (side === 'top') {
+    return { x: node.x + NODE_WIDTH / 2, y: node.y };
+  }
+  return { x: node.x + NODE_WIDTH / 2, y: node.y + NODE_HEIGHT };
+}
+
+function getNormal(side) {
+  if (side === 'left') {
+    return { x: -1, y: 0 };
+  }
+  if (side === 'right') {
+    return { x: 1, y: 0 };
+  }
+  if (side === 'top') {
+    return { x: 0, y: -1 };
+  }
+  return { x: 0, y: 1 };
+}
+
+export function getSuggestedAnchorSides(start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? { from: 'right', to: 'left' } : { from: 'left', to: 'right' };
+  }
+
+  return dy >= 0 ? { from: 'bottom', to: 'top' } : { from: 'top', to: 'bottom' };
+}
+
+export function buildStructuredEdgePath(start, end, kind = 'source', lane = 0, anchors = null) {
+  const defaults = getSuggestedAnchorSides(start, end);
+  const startSide = ANCHOR_SIDES.includes(anchors?.from) ? anchors.from : defaults.from;
+  const endSide = ANCHOR_SIDES.includes(anchors?.to) ? anchors.to : defaults.to;
+  const startPoint = getAnchorPoint(start, startSide);
+  const endPoint = getAnchorPoint(end, endSide);
+  const startNormal = getNormal(startSide);
+  const endNormal = getNormal(endSide);
+  const startPerpendicular = { x: -startNormal.y, y: startNormal.x };
+  const endPerpendicular = { x: -endNormal.y, y: endNormal.x };
   const laneOffset = kind === 'source' ? -20 - lane * 8 : 20 + lane * 8;
-  const pull = Math.max(72, Math.abs(endX - startX) * 0.42);
-  const control1X = startX + direction * pull;
-  const control2X = endX - direction * pull;
-  const control1Y = startY + laneOffset;
-  const control2Y = endY + laneOffset;
+  const baseDistance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+  const pull = Math.max(72, baseDistance * 0.34);
+
+  const control1X = startPoint.x + startNormal.x * pull + startPerpendicular.x * laneOffset;
+  const control1Y = startPoint.y + startNormal.y * pull + startPerpendicular.y * laneOffset;
+  const control2X = endPoint.x + endNormal.x * pull + endPerpendicular.x * laneOffset;
+  const control2Y = endPoint.y + endNormal.y * pull + endPerpendicular.y * laneOffset;
 
   return [
-    `M ${startX} ${startY}`,
-    `C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${endX} ${endY}`,
+    `M ${startPoint.x} ${startPoint.y}`,
+    `C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${endPoint.x} ${endPoint.y}`,
   ].join(' ');
 }

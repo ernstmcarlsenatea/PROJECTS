@@ -82,7 +82,9 @@ export function createEmptyDraft() {
     presentedIn: '',
     description: '',
     sourceId: null,
+    sourceAnchor: { from: 'right', to: 'left' },
     dependencies: [],
+    dependencyAnchors: {},
     position: { x: 140, y: 140 },
   };
 }
