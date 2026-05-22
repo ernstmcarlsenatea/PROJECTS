@@ -100,6 +100,9 @@ function App() {
   const dragRef = useRef(null);
   const suppressClickRef = useRef(null);
   const graphStageRef = useRef(null);
+  const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
+  const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
+  const graph = useMemo(() => getGraphLayout(state.parts), [state.parts]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -169,14 +172,14 @@ function App() {
 
     recalcFit();
 
+    if (typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
     const observer = new ResizeObserver(recalcFit);
     observer.observe(stage);
     return () => observer.disconnect();
   }, [isBoardFullscreen, graph.width, graph.height]);
-
-  const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
-  const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
-  const graph = useMemo(() => getGraphLayout(state.parts), [state.parts]);
 
   const selectedResolved = draft ? getResolvedPart(draft.id, state.parts) ?? draft : null;
   const sourceChain = draft ? getSourceChainNames(draft, partsMap) : [];
@@ -754,7 +757,7 @@ function App() {
       <header className="hero">
         <div>
           <p className="eyebrow">ATEA AS customer plan atlas</p>
-          <h1>Kundeplan built as a living cartoon map.</h1>
+          <h1>Kundeplan</h1>
           <p className="hero-copy">
             Track every part, the owner, where it lives, where it is presented, and how it depends on the rest.
             One source of truth keeps updates propagating cleanly across the map.
