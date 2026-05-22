@@ -109,8 +109,8 @@ export function getGraphLayout(parts) {
   for (const [depth, items] of columns.entries()) {
     items.forEach((part, index) => {
       positions.set(part.id, {
-        x: part.position?.x ?? padding + depth * columnWidth,
-        y: part.position?.y ?? padding + index * rowHeight,
+        x: padding + depth * columnWidth,
+        y: padding + index * rowHeight,
       });
     });
   }

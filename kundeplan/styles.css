@@ -343,6 +343,15 @@ body::after {
   box-shadow: 0 0 0 5px rgba(255, 216, 79, 0.4), 0 10px 0 rgba(36, 48, 70, 0.12);
 }
 
+.graph-node.is-connecting-from {
+  outline: 4px solid #ff5f92;
+  transform: translateY(-2px);
+}
+
+.graph-node.is-connect-target {
+  outline: 4px dashed #1d9c8f;
+}
+
 .graph-node::after {
   content: "";
   position: absolute;

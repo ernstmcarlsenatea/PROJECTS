@@ -59,13 +59,9 @@ function DetailLine({ label, value }) {
 
 function App() {
   const [state, setState] = useState(() => loadState());
-  const [dragId, setDragId] = useState(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [connectionHoverId, setConnectionHoverId] = useState(null);
   const historyRef = useRef({ past: [], future: [] });
-  const dragSnapshotRef = useRef(null);
   const connectionStartRef = useRef(null);
-  const dragMovedRef = useRef(false);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -218,68 +214,28 @@ function App() {
     commit({ parts, selectedId: nextSelected, draft: nextSelected ? clonePart(parts[0]) : createEmptyDraft(), connectingFromId: null, pendingConnection: null });
   }
 
-  function startDrag(event, partId) {
-    event.preventDefault();
-    const part = state.parts.find((entry) => entry.id === partId);
-    if (!part) {
-      return;
-    }
-
-    const rect = event.currentTarget.closest('.graph-stage').getBoundingClientRect();
-    setDragId(partId);
-    setDragOffset({ x: event.clientX - rect.left - (part.position?.x ?? 0), y: event.clientY - rect.top - (part.position?.y ?? 0) });
-    dragSnapshotRef.current = cloneAppState(state);
-    dragMovedRef.current = false;
-    selectPart(partId);
-  }
-
-  useEffect(() => {
-    function onMove(event) {
-      if (!dragId) {
-        return;
-      }
-
-      const stage = document.querySelector('.graph-stage');
-      if (!stage) {
-        return;
-      }
-
-      const rect = stage.getBoundingClientRect();
-      const nextX = Math.max(0, event.clientX - rect.left - dragOffset.x);
-      const nextY = Math.max(0, event.clientY - rect.top - dragOffset.y);
-      dragMovedRef.current = true;
-
-      setState((current) => ({
-        ...current,
-        parts: current.parts.map((part) => (part.id === dragId ? { ...part, position: { x: nextX, y: nextY } } : part)),
-        draft: current.draft?.id === dragId ? { ...current.draft, position: { x: nextX, y: nextY } } : current.draft,
-      }));
-    }
-
-    function onUp() {
-      if (dragId) {
-        if (dragMovedRef.current) {
-          historyRef.current.past.push(dragSnapshotRef.current ?? cloneAppState(state));
-          historyRef.current.future = [];
-        }
-        setDragId(null);
-        dragSnapshotRef.current = null;
-        dragMovedRef.current = false;
-      }
-    }
-
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, [dragId, dragOffset]);
-
   function beginConnection(partId, event) {
     event.stopPropagation();
     connectionStartRef.current = partId;
     setState((current) => ({ ...current, connectingFromId: partId, pendingConnection: null }));
+  }
+
+  function setConnectionMode(mode) {
+    setState((current) => ({ ...current, connectionMode: mode, connectingFromId: null, pendingConnection: null }));
+    connectionStartRef.current = null;
+    setConnectionHoverId(null);
+  }
+
+  function onNodeClick(partId) {
+    if (state.connectingFromId) {
+      if (state.connectingFromId === partId) {
+        return;
+      }
+      completeConnection(partId, connectionStartRef.current ?? state.connectingFromId);
+      return;
+    }
+
+    selectPart(partId);
   }
 
   function completeConnection(targetId, sourceId = state.connectingFromId, { history = true } = {}) {
@@ -318,6 +274,7 @@ function App() {
 
   function cancelConnection() {
     connectionStartRef.current = null;
+    setConnectionHoverId(null);
     setState((current) => ({ ...current, connectingFromId: null, pendingConnection: null }));
   }
 
@@ -346,7 +303,6 @@ function App() {
     historyRef.current.future.push(cloneAppState(state));
     setState({ ...cloneAppState(previous), connectingFromId: null, pendingConnection: null });
     cancelConnection();
-    setDragId(null);
   }
 
   function redo() {
@@ -358,7 +314,6 @@ function App() {
     historyRef.current.past.push(cloneAppState(state));
     setState({ ...cloneAppState(next), connectingFromId: null, pendingConnection: null });
     cancelConnection();
-    setDragId(null);
   }
 
   const connectionPreview = useMemo(() => {
@@ -376,44 +331,8 @@ function App() {
   }, [graph.positions, state.connectingFromId, connectionHoverId, state.connectionMode]);
 
   const connectionInstruction = state.connectingFromId
-    ? `Choose a target to ${state.connectionMode === 'source' ? 'set a source link' : 'add a dependency'}.`
-    : 'Drag nodes to reposition them, or drag from the link dot on one node to another node.';
-
-  useEffect(() => {
-    function onPointerMove(event) {
-      if (!state.connectingFromId) {
-        return;
-      }
-
-      const element = document.elementFromPoint(event.clientX, event.clientY);
-      const node = element?.closest?.('.graph-node');
-      const targetId = node?.dataset?.partId ?? null;
-      setConnectionHoverId(targetId);
-    }
-
-    function onPointerUp(event) {
-      if (!state.connectingFromId) {
-        return;
-      }
-
-      const element = document.elementFromPoint(event.clientX, event.clientY);
-      const node = element?.closest?.('.graph-node');
-      const targetId = node?.dataset?.partId ?? null;
-      if (targetId) {
-        completeConnection(targetId, connectionStartRef.current ?? state.connectingFromId);
-      } else {
-        cancelConnection();
-      }
-      setConnectionHoverId(null);
-    }
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-    };
-  }, [state.connectingFromId, state.connectionMode, state.parts]);
+    ? `Click a target box to ${state.connectionMode === 'source' ? 'set a source link' : 'add a dependency'}.`
+    : 'Click the link dot on a box, then click the target box.';
 
   return (
     <main className="app-shell">
@@ -454,12 +373,17 @@ function App() {
             <div className="panel-tools">
               <label>
                 Connection mode
-                <select value={state.connectionMode} onChange={(event) => persist({ connectionMode: event.target.value })}>
+                <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)}>
                   <option value="dependency">Dependency</option>
                   <option value="source">Source</option>
                 </select>
               </label>
               <span className="pill">{connectionInstruction}</span>
+              {state.connectingFromId ? (
+                <button type="button" className="secondary-button" onClick={cancelConnection}>
+                  Cancel link
+                </button>
+              ) : null}
               <div className="edge-legend" aria-label="Connection types">
                 <span className="edge-legend-item edge-legend-source">Source link</span>
                 <span className="edge-legend-item edge-legend-dependency">Dependency</span>
@@ -467,7 +391,7 @@ function App() {
             </div>
           </div>
 
-          <div className="graph-stage" aria-live="polite" onPointerLeave={() => setConnectionHoverId(null)}>
+          <div className="graph-stage" aria-live="polite" onClick={state.connectingFromId ? cancelConnection : undefined}>
             <svg viewBox={`0 0 ${graph.width} ${graph.height}`} preserveAspectRatio="none" aria-hidden="true">
               <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -519,12 +443,29 @@ function App() {
                     type="button"
                     key={part.id}
                     data-part-id={part.id}
-                    className={`graph-node ${selected} ${sourceClass}`}
+                    className={`graph-node ${selected} ${sourceClass} ${state.connectingFromId === part.id ? 'is-connecting-from' : ''} ${connectionHoverId === part.id ? 'is-connect-target' : ''}`}
                     style={{ left: position.x, top: position.y, width: `${NODE_WIDTH}px`, minHeight: `${NODE_HEIGHT}px`, '--node-color': color }}
-                    onClick={() => selectPart(part.id)}
-                    onPointerDown={(event) => startDrag(event, part.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onNodeClick(part.id);
+                    }}
+                    onMouseEnter={() => {
+                      if (state.connectingFromId && state.connectingFromId !== part.id) {
+                        setConnectionHoverId(part.id);
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (connectionHoverId === part.id) {
+                        setConnectionHoverId(null);
+                      }
+                    }}
                   >
-                    <span className="graph-handle" onPointerDown={(event) => beginConnection(part.id, event)} title={`Start ${state.connectionMode === 'source' ? 'source' : 'dependency'} connection`}>
+                    <span
+                      className="graph-handle"
+                      onPointerDown={(event) => beginConnection(part.id, event)}
+                      onClick={(event) => event.stopPropagation()}
+                      title={`Start ${state.connectionMode === 'source' ? 'source' : 'dependency'} connection`}
+                    >
                       ↘
                     </span>
                     <span className="node-title">{part.name}</span>
