@@ -392,7 +392,7 @@ function App() {
           </div>
 
           <div className="graph-stage" aria-live="polite" onClick={state.connectingFromId ? cancelConnection : undefined}>
-            <svg viewBox={`0 0 ${graph.width} ${graph.height}`} preserveAspectRatio="none" aria-hidden="true">
+            <svg viewBox={`0 0 ${graph.width} ${graph.height}`} preserveAspectRatio="xMinYMin meet" style={{ width: `${graph.width}px`, height: `${graph.height}px` }} aria-hidden="true">
               <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#243046" />
@@ -444,7 +444,7 @@ function App() {
                     key={part.id}
                     data-part-id={part.id}
                     className={`graph-node ${selected} ${sourceClass} ${state.connectingFromId === part.id ? 'is-connecting-from' : ''} ${connectionHoverId === part.id ? 'is-connect-target' : ''}`}
-                    style={{ left: position.x, top: position.y, width: `${NODE_WIDTH}px`, minHeight: `${NODE_HEIGHT}px`, '--node-color': color }}
+                    style={{ left: position.x, top: position.y, width: `${NODE_WIDTH}px`, height: `${NODE_HEIGHT}px`, '--node-color': color }}
                     onClick={(event) => {
                       event.stopPropagation();
                       onNodeClick(part.id);
