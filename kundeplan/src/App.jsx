@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { STORAGE_KEY, createEmptyDraft, createId, demoParts } from './data.js';
-import { buildEdgePath, canUseAsSource, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames } from './graph.js';
+import { buildStructuredEdgePath, canUseAsSource, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames } from './graph.js';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 
@@ -370,8 +370,8 @@ function App() {
       return null;
     }
 
-    return buildEdgePath(start, hover);
-  }, [graph.positions, state.connectingFromId, connectionHoverId]);
+    return buildStructuredEdgePath(start, hover, state.connectionMode, 0);
+  }, [graph.positions, state.connectingFromId, connectionHoverId, state.connectionMode]);
 
   const connectionInstruction = state.connectingFromId
     ? `Choose a target to ${state.connectionMode === 'source' ? 'set a source link' : 'add a dependency'}.`
@@ -458,6 +458,10 @@ function App() {
                 </select>
               </label>
               <span className="pill">{connectionInstruction}</span>
+              <div className="edge-legend" aria-label="Connection types">
+                <span className="edge-legend-item edge-legend-source">Source link</span>
+                <span className="edge-legend-item edge-legend-dependency">Dependency</span>
+              </div>
             </div>
           </div>
 
@@ -476,22 +480,25 @@ function App() {
                     return null;
                   }
 
-                  return (
-                    <path key={`${part.id}-${part.sourceId}`} d={buildEdgePath(source, target)} className={`edge-line ${part.id === selectedId ? 'is-highlighted' : ''}`} />
-                  );
+                  return <path key={`${part.id}-${part.sourceId}`} d={buildStructuredEdgePath(source, target, 'source', 0)} className={`edge-line edge-source ${part.id === selectedId ? 'is-highlighted' : ''}`} />;
                 })}
-                {state.parts.flatMap((part) =>
-                  part.dependencies.map((dependencyId) => {
-                    const source = graph.positions.get(dependencyId);
-                    const target = graph.positions.get(part.id);
-                    if (!source || !target) {
-                      return null;
-                    }
-                    return (
-                      <path key={`${part.id}-${dependencyId}`} d={buildEdgePath(source, target)} className="edge-line dependency-edge" />
-                    );
-                  }),
-                )}
+                {(() => {
+                  const dependencyLaneCounts = new Map();
+                  return state.parts.flatMap((part) =>
+                    part.dependencies.map((dependencyId) => {
+                      const source = graph.positions.get(dependencyId);
+                      const target = graph.positions.get(part.id);
+                      if (!source || !target) {
+                        return null;
+                      }
+
+                      const lane = dependencyLaneCounts.get(part.id) ?? 0;
+                      dependencyLaneCounts.set(part.id, lane + 1);
+
+                      return <path key={`${part.id}-${dependencyId}`} d={buildStructuredEdgePath(source, target, 'dependency', lane)} className="edge-line edge-dependency" />;
+                    }),
+                  );
+                })()}
                 {connectionPreview ? <path d={connectionPreview} className="edge-line connection-preview" /> : null}
               </g>
             </svg>

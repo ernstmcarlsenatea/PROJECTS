@@ -118,11 +118,22 @@ export function getGraphLayout(parts) {
   return { nodes, positions, partsMap, width: Math.max(1200, columns.size * columnWidth + padding * 2), height: Math.max(760, parts.length * 170) };
 }
 
-export function buildEdgePath(start, end) {
+export function buildStructuredEdgePath(start, end, kind = 'source', lane = 0) {
   const startX = start.x + 220;
   const startY = start.y + 72;
   const endX = end.x;
   const endY = end.y + 72;
-  const bend = Math.max(70, (endX - startX) * 0.55);
-  return `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}`;
+  const direction = endX >= startX ? 1 : -1;
+  const laneOffset = kind === 'source' ? -24 - lane * 10 : 24 + lane * 10;
+  const controlY = Math.min(startY, endY) + laneOffset;
+  const pull = Math.max(60, Math.abs(endX - startX) * 0.35);
+  const control1X = startX + direction * pull;
+  const control2X = endX - direction * pull;
+  const control1Y = startY + laneOffset;
+  const control2Y = endY + laneOffset;
+
+  return [
+    `M ${startX} ${startY}`,
+    `C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${endX} ${endY}`,
+  ].join(' ');
 }
