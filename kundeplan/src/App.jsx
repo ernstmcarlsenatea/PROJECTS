@@ -94,10 +94,12 @@ function App() {
   const [hoveredLink, setHoveredLink] = useState(null);
   const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
   const [newDependencyId, setNewDependencyId] = useState('');
+  const [fitView, setFitView] = useState({ scale: 1, offsetX: 0, offsetY: 0 });
   const historyRef = useRef({ past: [], future: [] });
   const connectionStartRef = useRef(null);
   const dragRef = useRef(null);
   const suppressClickRef = useRef(null);
+  const graphStageRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -137,6 +139,40 @@ function App() {
   useEffect(() => {
     setNewDependencyId('');
   }, [draft?.id]);
+
+  useEffect(() => {
+    if (!isBoardFullscreen) {
+      setFitView({ scale: 1, offsetX: 0, offsetY: 0 });
+      return;
+    }
+
+    const stage = graphStageRef.current;
+    if (!stage) {
+      return;
+    }
+
+    function recalcFit() {
+      const padding = 18;
+      const availableWidth = Math.max(1, stage.clientWidth - padding * 2);
+      const availableHeight = Math.max(1, stage.clientHeight - padding * 2);
+      const scale = Math.min(availableWidth / graph.width, availableHeight / graph.height);
+      const boundedScale = Math.max(0.2, Math.min(1.4, scale));
+      const scaledWidth = graph.width * boundedScale;
+      const scaledHeight = graph.height * boundedScale;
+
+      setFitView({
+        scale: boundedScale,
+        offsetX: Math.max(0, (stage.clientWidth - scaledWidth) / 2),
+        offsetY: Math.max(0, (stage.clientHeight - scaledHeight) / 2),
+      });
+    }
+
+    recalcFit();
+
+    const observer = new ResizeObserver(recalcFit);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [isBoardFullscreen, graph.width, graph.height]);
 
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
@@ -455,8 +491,9 @@ function App() {
       return;
     }
 
-    const dx = event.clientX - dragging.pointerX;
-    const dy = event.clientY - dragging.pointerY;
+    const scale = isBoardFullscreen ? fitView.scale : 1;
+    const dx = (event.clientX - dragging.pointerX) / scale;
+    const dy = (event.clientY - dragging.pointerY) / scale;
     if (!dragging.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
       dragging.moved = true;
     }
@@ -771,7 +808,17 @@ function App() {
             </div>
           </div>
 
-          <div className="graph-stage" aria-live="polite" onClick={state.connectingFromId ? cancelConnection : undefined}>
+          <div ref={graphStageRef} className="graph-stage" aria-live="polite" onClick={state.connectingFromId ? cancelConnection : undefined}>
+            <div
+              className={`graph-canvas ${isBoardFullscreen ? 'is-fitted' : ''}`}
+              style={{
+                width: `${graph.width}px`,
+                height: `${graph.height}px`,
+                transform: isBoardFullscreen
+                  ? `translate(${Math.round(fitView.offsetX)}px, ${Math.round(fitView.offsetY)}px) scale(${fitView.scale})`
+                  : undefined,
+              }}
+            >
             <svg viewBox={`0 0 ${graph.width} ${graph.height}`} preserveAspectRatio="xMinYMin meet" style={{ width: `${graph.width}px`, height: `${graph.height}px` }} aria-hidden="true">
               <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -1005,6 +1052,7 @@ function App() {
                   </button>
                 );
               })}
+            </div>
             </div>
           </div>
         </section>
