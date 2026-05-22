@@ -84,6 +84,7 @@ export function createEmptyDraft() {
     sourceId: null,
     sourceAnchor: { from: 'right', to: 'left' },
     dependencies: [],
+    dependencyLabels: {},
     dependencyAnchors: {},
     position: { x: 140, y: 140 },
   };

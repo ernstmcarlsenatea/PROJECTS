@@ -124,7 +124,7 @@ const NODE_HEIGHT = 158;
 
 export const ANCHOR_SIDES = ['left', 'right', 'top', 'bottom'];
 
-function getAnchorPoint(node, side) {
+export function getAnchorPoint(node, side) {
   if (side === 'left') {
     return { x: node.x, y: node.y + NODE_HEIGHT / 2 };
   }
@@ -161,7 +161,7 @@ export function getSuggestedAnchorSides(start, end) {
   return dy >= 0 ? { from: 'bottom', to: 'top' } : { from: 'top', to: 'bottom' };
 }
 
-export function buildStructuredEdgePath(start, end, kind = 'source', lane = 0, anchors = null) {
+function computeStructuredCurve(start, end, kind = 'source', lane = 0, anchors = null) {
   const defaults = getSuggestedAnchorSides(start, end);
   const startSide = ANCHOR_SIDES.includes(anchors?.from) ? anchors.from : defaults.from;
   const endSide = ANCHOR_SIDES.includes(anchors?.to) ? anchors.to : defaults.to;
@@ -180,8 +180,35 @@ export function buildStructuredEdgePath(start, end, kind = 'source', lane = 0, a
   const control2X = endPoint.x + endNormal.x * pull + endPerpendicular.x * laneOffset;
   const control2Y = endPoint.y + endNormal.y * pull + endPerpendicular.y * laneOffset;
 
+  return {
+    startPoint,
+    endPoint,
+    control1: { x: control1X, y: control1Y },
+    control2: { x: control2X, y: control2Y },
+  };
+}
+
+export function buildStructuredEdgePath(start, end, kind = 'source', lane = 0, anchors = null) {
+  const curve = computeStructuredCurve(start, end, kind, lane, anchors);
+
   return [
-    `M ${startPoint.x} ${startPoint.y}`,
-    `C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${endPoint.x} ${endPoint.y}`,
+    `M ${curve.startPoint.x} ${curve.startPoint.y}`,
+    `C ${curve.control1.x} ${curve.control1.y}, ${curve.control2.x} ${curve.control2.y}, ${curve.endPoint.x} ${curve.endPoint.y}`,
   ].join(' ');
+}
+
+export function getEdgeGeometry(start, end, kind = 'source', lane = 0, anchors = null) {
+  const curve = computeStructuredCurve(start, end, kind, lane, anchors);
+
+  const midX = 0.125 * curve.startPoint.x + 0.375 * curve.control1.x + 0.375 * curve.control2.x + 0.125 * curve.endPoint.x;
+  const midY = 0.125 * curve.startPoint.y + 0.375 * curve.control1.y + 0.375 * curve.control2.y + 0.125 * curve.endPoint.y;
+
+  return {
+    ...curve,
+    label: { x: midX, y: midY },
+    path: [
+      `M ${curve.startPoint.x} ${curve.startPoint.y}`,
+      `C ${curve.control1.x} ${curve.control1.y}, ${curve.control2.x} ${curve.control2.y}, ${curve.endPoint.x} ${curve.endPoint.y}`,
+    ].join(' '),
+  };
 }

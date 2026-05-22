@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { STORAGE_KEY, createEmptyDraft, createId, demoParts } from './data.js';
-import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
+import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 const NODE_WIDTH = 220;
@@ -11,6 +11,14 @@ const ANCHOR_LABELS = {
   top: 'Top',
   bottom: 'Bottom',
 };
+
+function nextAnchorSide(side) {
+  const index = ANCHOR_SIDES.indexOf(side);
+  if (index < 0) {
+    return ANCHOR_SIDES[0];
+  }
+  return ANCHOR_SIDES[(index + 1) % ANCHOR_SIDES.length];
+}
 
 function clonePart(part) {
   const dependencyAnchors = Object.fromEntries(
@@ -26,6 +34,7 @@ function clonePart(part) {
   return {
     ...part,
     dependencies: [...(part.dependencies ?? [])],
+    dependencyLabels: { ...(part.dependencyLabels ?? {}) },
     position: { ...(part.position ?? { x: 140, y: 140 }) },
     sourceAnchor: {
       from: part.sourceAnchor?.from ?? 'right',
@@ -82,7 +91,9 @@ function App() {
   const [state, setState] = useState(() => loadState());
   const [connectionHoverId, setConnectionHoverId] = useState(null);
   const [draggingNodeId, setDraggingNodeId] = useState(null);
+  const [hoveredLink, setHoveredLink] = useState(null);
   const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
+  const [newDependencyId, setNewDependencyId] = useState('');
   const historyRef = useRef({ past: [], future: [] });
   const connectionStartRef = useRef(null);
   const dragRef = useRef(null);
@@ -123,6 +134,10 @@ function App() {
     return () => window.removeEventListener('keydown', onEscape);
   }, []);
 
+  useEffect(() => {
+    setNewDependencyId('');
+  }, [draft?.id]);
+
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
   const graph = useMemo(() => getGraphLayout(state.parts), [state.parts]);
@@ -157,6 +172,12 @@ function App() {
   }, [state.parts]);
 
   const selectedId = draft?.id ?? state.selectedId;
+  const addableDependencies = useMemo(() => {
+    if (!draft) {
+      return [];
+    }
+    return state.parts.filter((part) => part.id !== draft.id && !draft.dependencies.includes(part.id));
+  }, [state.parts, draft]);
 
   function suggestAnchors(sourceId, targetId) {
     const source = graph.positions.get(sourceId);
@@ -165,6 +186,67 @@ function App() {
       return { from: 'right', to: 'left' };
     }
     return getSuggestedAnchorSides(source, target);
+  }
+
+  function resolveAnchors(sourceId, targetId, storedAnchor) {
+    const fallback = suggestAnchors(sourceId, targetId);
+    return {
+      from: ANCHOR_SIDES.includes(storedAnchor?.from) ? storedAnchor.from : fallback.from,
+      to: ANCHOR_SIDES.includes(storedAnchor?.to) ? storedAnchor.to : fallback.to,
+    };
+  }
+
+  function cycleSourceAnchorSide(targetPartId, sideKey) {
+    commit((current) => {
+      const target = current.parts.find((part) => part.id === targetPartId);
+      if (!target?.sourceId) {
+        return current;
+      }
+
+      const anchors = resolveAnchors(target.sourceId, targetPartId, target.sourceAnchor);
+      const updatedAnchor = { ...anchors, [sideKey]: nextAnchorSide(anchors[sideKey]) };
+
+      const parts = current.parts.map((part) => (part.id === targetPartId ? { ...part, sourceAnchor: updatedAnchor } : part));
+      const draft = current.draft?.id === targetPartId ? { ...current.draft, sourceAnchor: updatedAnchor } : current.draft;
+      return { ...current, parts, draft };
+    });
+  }
+
+  function cycleDependencyAnchorSide(targetPartId, dependencyId, sideKey) {
+    commit((current) => {
+      const target = current.parts.find((part) => part.id === targetPartId);
+      if (!target || !target.dependencies.includes(dependencyId)) {
+        return current;
+      }
+
+      const anchors = resolveAnchors(dependencyId, targetPartId, target.dependencyAnchors?.[dependencyId]);
+      const updatedAnchor = { ...anchors, [sideKey]: nextAnchorSide(anchors[sideKey]) };
+
+      const parts = current.parts.map((part) => {
+        if (part.id !== targetPartId) {
+          return part;
+        }
+        return {
+          ...part,
+          dependencyAnchors: {
+            ...(part.dependencyAnchors ?? {}),
+            [dependencyId]: updatedAnchor,
+          },
+        };
+      });
+
+      const draft = current.draft?.id === targetPartId
+        ? {
+            ...current.draft,
+            dependencyAnchors: {
+              ...(current.draft.dependencyAnchors ?? {}),
+              [dependencyId]: updatedAnchor,
+            },
+          }
+        : current.draft;
+
+      return { ...current, parts, draft };
+    });
   }
 
   function commit(updater, { history = true } = {}) {
@@ -235,6 +317,77 @@ function App() {
       },
     };
     updateDraft('dependencyAnchors', nextAnchors);
+  }
+
+  function addDependencyToDraft(dependencyId) {
+    if (!draft || !dependencyId || dependencyId === draft.id || draft.dependencies.includes(dependencyId)) {
+      return;
+    }
+
+    const sourcePart = partsMap.get(dependencyId);
+    const nextDependencies = [...draft.dependencies, dependencyId];
+    const nextDependencyAnchors = {
+      ...(draft.dependencyAnchors ?? {}),
+      [dependencyId]: draft.dependencyAnchors?.[dependencyId] ?? suggestAnchors(dependencyId, draft.id),
+    };
+    const nextDependencyLabels = {
+      ...(draft.dependencyLabels ?? {}),
+      [dependencyId]: draft.dependencyLabels?.[dependencyId] ?? `${sourcePart?.name ?? dependencyId} link`,
+    };
+
+    setState((current) => ({
+      ...current,
+      draft: current.draft
+        ? {
+            ...current.draft,
+            dependencies: nextDependencies,
+            dependencyAnchors: nextDependencyAnchors,
+            dependencyLabels: nextDependencyLabels,
+          }
+        : current.draft,
+    }));
+  }
+
+  function removeDependencyFromDraft(dependencyId) {
+    if (!draft || !draft.dependencies.includes(dependencyId)) {
+      return;
+    }
+
+    const nextDependencyAnchors = { ...(draft.dependencyAnchors ?? {}) };
+    const nextDependencyLabels = { ...(draft.dependencyLabels ?? {}) };
+    delete nextDependencyAnchors[dependencyId];
+    delete nextDependencyLabels[dependencyId];
+
+    setState((current) => ({
+      ...current,
+      draft: current.draft
+        ? {
+            ...current.draft,
+            dependencies: current.draft.dependencies.filter((id) => id !== dependencyId),
+            dependencyAnchors: nextDependencyAnchors,
+            dependencyLabels: nextDependencyLabels,
+          }
+        : current.draft,
+    }));
+  }
+
+  function updateDependencyLabel(dependencyId, label) {
+    if (!draft) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      draft: current.draft
+        ? {
+            ...current.draft,
+            dependencyLabels: {
+              ...(current.draft.dependencyLabels ?? {}),
+              [dependencyId]: label,
+            },
+          }
+        : current.draft,
+    }));
   }
 
   function beginNodeDrag(partId, event) {
@@ -351,6 +504,9 @@ function App() {
       id: targetId,
       sourceId: draft.sourceId || null,
       dependencies: [...new Set((draft.dependencies || []).filter((dependencyId) => dependencyId !== targetId))],
+      dependencyLabels: Object.fromEntries(
+        Object.entries(draft.dependencyLabels ?? {}).filter(([dependencyId]) => (draft.dependencies || []).includes(dependencyId)),
+      ),
       position: draft.position ?? { x: 140, y: 140 },
       sourceAnchor: {
         from: ANCHOR_SIDES.includes(draft.sourceAnchor?.from) ? draft.sourceAnchor.from : 'right',
@@ -393,6 +549,9 @@ function App() {
         ...part,
         sourceId: part.sourceId === removedId ? removedSourceId : part.sourceId,
         dependencies: part.dependencies.filter((dependencyId) => dependencyId !== removedId),
+        dependencyLabels: Object.fromEntries(
+          Object.entries(part.dependencyLabels ?? {}).filter(([dependencyId]) => dependencyId !== removedId),
+        ),
         dependencyAnchors: Object.fromEntries(
           Object.entries(part.dependencyAnchors ?? {}).filter(([dependencyId]) => dependencyId !== removedId),
         ),
@@ -451,10 +610,15 @@ function App() {
           if (part.dependencies.includes(fromId)) {
             return part;
           }
+          const dependencyName = current.parts.find((entry) => entry.id === fromId)?.name ?? fromId;
           const defaultAnchor = suggestAnchors(fromId, targetId);
           return {
             ...part,
             dependencies: [...part.dependencies, fromId],
+            dependencyLabels: {
+              ...(part.dependencyLabels ?? {}),
+              [fromId]: part.dependencyLabels?.[fromId] ?? `${dependencyName} link`,
+            },
             dependencyAnchors: {
               ...(part.dependencyAnchors ?? {}),
               [fromId]: part.dependencyAnchors?.[fromId] ?? defaultAnchor,
@@ -483,14 +647,17 @@ function App() {
           return part;
         }
         const dependencyAnchors = { ...(part.dependencyAnchors ?? {}) };
+        const dependencyLabels = { ...(part.dependencyLabels ?? {}) };
         delete dependencyAnchors[dependencyId];
-        return { ...part, dependencies: part.dependencies.filter((id) => id !== dependencyId), dependencyAnchors };
+        delete dependencyLabels[dependencyId];
+        return { ...part, dependencies: part.dependencies.filter((id) => id !== dependencyId), dependencyAnchors, dependencyLabels };
       }),
       draft: current.draft?.id === partId
         ? {
             ...current.draft,
             dependencies: current.draft.dependencies.filter((id) => id !== dependencyId),
             dependencyAnchors: Object.fromEntries(Object.entries(current.draft.dependencyAnchors ?? {}).filter(([id]) => id !== dependencyId)),
+            dependencyLabels: Object.fromEntries(Object.entries(current.draft.dependencyLabels ?? {}).filter(([id]) => id !== dependencyId)),
           }
         : current.draft,
     }));
@@ -619,11 +786,15 @@ function App() {
                     return null;
                   }
 
+                  const anchors = resolveAnchors(part.sourceId, part.id, part.sourceAnchor);
+
                   return (
                     <path
                       key={`${part.id}-${part.sourceId}`}
-                      d={buildStructuredEdgePath(source, target, 'source', 0, part.sourceAnchor)}
+                      d={buildStructuredEdgePath(source, target, 'source', 0, anchors)}
                       className={`edge-line edge-source ${part.id === selectedId ? 'is-highlighted' : ''}`}
+                      onMouseEnter={() => setHoveredLink({ kind: 'source', targetId: part.id, sourceId: part.sourceId })}
+                      onMouseLeave={() => setHoveredLink((current) => (current?.kind === 'source' && current?.targetId === part.id ? null : current))}
                     />
                   );
                 })}
@@ -639,18 +810,139 @@ function App() {
 
                       const lane = dependencyLaneCounts.get(part.id) ?? 0;
                       dependencyLaneCounts.set(part.id, lane + 1);
+                      const anchors = resolveAnchors(dependencyId, part.id, part.dependencyAnchors?.[dependencyId]);
+                      const geometry = getEdgeGeometry(source, target, 'dependency', lane, anchors);
+                      const labelText = part.dependencyLabels?.[dependencyId]?.trim() || 'Dependency';
 
                       return (
-                        <path
-                          key={`${part.id}-${dependencyId}`}
-                          d={buildStructuredEdgePath(source, target, 'dependency', lane, part.dependencyAnchors?.[dependencyId])}
-                          className="edge-line edge-dependency"
-                        />
+                        <g key={`${part.id}-${dependencyId}`}>
+                          <path
+                            d={geometry.path}
+                            className="edge-line edge-dependency"
+                            onMouseEnter={() => setHoveredLink({ kind: 'dependency', targetId: part.id, sourceId: dependencyId })}
+                            onMouseLeave={() => setHoveredLink((current) => (current?.kind === 'dependency' && current?.targetId === part.id && current?.sourceId === dependencyId ? null : current))}
+                          />
+                          <g
+                            className="edge-label"
+                            transform={`translate(${geometry.label.x}, ${geometry.label.y})`}
+                            onMouseEnter={() => setHoveredLink({ kind: 'dependency', targetId: part.id, sourceId: dependencyId })}
+                            onMouseLeave={() => setHoveredLink((current) => (current?.kind === 'dependency' && current?.targetId === part.id && current?.sourceId === dependencyId ? null : current))}
+                          >
+                            <rect x="-58" y="-10" width="116" height="20" rx="9" ry="9" />
+                            <text x="0" y="0">{labelText}</text>
+                          </g>
+                        </g>
                       );
                     }),
                   );
                 })()}
                 {connectionPreview ? <path d={connectionPreview} className="edge-line connection-preview" /> : null}
+                {state.parts.map((part) => {
+                  const source = part.sourceId ? graph.positions.get(part.sourceId) : null;
+                  const target = graph.positions.get(part.id);
+                  if (!source || !target) {
+                    return null;
+                  }
+
+                  const showHandles = part.id === selectedId || (hoveredLink?.kind === 'source' && hoveredLink?.targetId === part.id);
+                  if (!showHandles) {
+                    return null;
+                  }
+
+                  const anchors = resolveAnchors(part.sourceId, part.id, part.sourceAnchor);
+                  const startPoint = getAnchorPoint(source, anchors.from);
+                  const endPoint = getAnchorPoint(target, anchors.to);
+
+                  return (
+                    <g key={`source-handles-${part.id}-${part.sourceId}`}>
+                      <circle
+                        className="edge-anchor-handle edge-anchor-start edge-anchor-source"
+                        cx={startPoint.x}
+                        cy={startPoint.y}
+                        r="7"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onMouseEnter={() => setHoveredLink({ kind: 'source', targetId: part.id, sourceId: part.sourceId })}
+                        onMouseLeave={() => setHoveredLink((current) => (current?.kind === 'source' && current?.targetId === part.id ? null : current))}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          cycleSourceAnchorSide(part.id, 'from');
+                        }}
+                      >
+                        <title>Cycle source start side</title>
+                      </circle>
+                      <circle
+                        className="edge-anchor-handle edge-anchor-end edge-anchor-source"
+                        cx={endPoint.x}
+                        cy={endPoint.y}
+                        r="7"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onMouseEnter={() => setHoveredLink({ kind: 'source', targetId: part.id, sourceId: part.sourceId })}
+                        onMouseLeave={() => setHoveredLink((current) => (current?.kind === 'source' && current?.targetId === part.id ? null : current))}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          cycleSourceAnchorSide(part.id, 'to');
+                        }}
+                      >
+                        <title>Cycle source end side</title>
+                      </circle>
+                    </g>
+                  );
+                })}
+                {state.parts.flatMap((part) =>
+                  part.dependencies.map((dependencyId) => {
+                    const source = graph.positions.get(dependencyId);
+                    const target = graph.positions.get(part.id);
+                    if (!source || !target) {
+                      return null;
+                    }
+
+                    const showHandles =
+                      part.id === selectedId
+                      || (hoveredLink?.kind === 'dependency' && hoveredLink?.targetId === part.id && hoveredLink?.sourceId === dependencyId);
+                    if (!showHandles) {
+                      return null;
+                    }
+
+                    const anchors = resolveAnchors(dependencyId, part.id, part.dependencyAnchors?.[dependencyId]);
+                    const startPoint = getAnchorPoint(source, anchors.from);
+                    const endPoint = getAnchorPoint(target, anchors.to);
+
+                    return (
+                      <g key={`dependency-handles-${part.id}-${dependencyId}`}>
+                        <circle
+                          className="edge-anchor-handle edge-anchor-start edge-anchor-dependency"
+                          cx={startPoint.x}
+                          cy={startPoint.y}
+                          r="6"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onMouseEnter={() => setHoveredLink({ kind: 'dependency', targetId: part.id, sourceId: dependencyId })}
+                          onMouseLeave={() => setHoveredLink((current) => (current?.kind === 'dependency' && current?.targetId === part.id && current?.sourceId === dependencyId ? null : current))}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            cycleDependencyAnchorSide(part.id, dependencyId, 'from');
+                          }}
+                        >
+                          <title>Cycle dependency start side</title>
+                        </circle>
+                        <circle
+                          className="edge-anchor-handle edge-anchor-end edge-anchor-dependency"
+                          cx={endPoint.x}
+                          cy={endPoint.y}
+                          r="6"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onMouseEnter={() => setHoveredLink({ kind: 'dependency', targetId: part.id, sourceId: dependencyId })}
+                          onMouseLeave={() => setHoveredLink((current) => (current?.kind === 'dependency' && current?.targetId === part.id && current?.sourceId === dependencyId ? null : current))}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            cycleDependencyAnchorSide(part.id, dependencyId, 'to');
+                          }}
+                        >
+                          <title>Cycle dependency end side</title>
+                        </circle>
+                      </g>
+                    );
+                  }),
+                )}
               </g>
             </svg>
 
@@ -821,50 +1113,57 @@ function App() {
 
             <div className="dependency-picker">
               <div className="picker-header">
-                <span>Dependencies</span>
-                <span className="hint">Choose the parts this one needs</span>
+                <span>Dependency manager</span>
+                <span className="hint">Create, label, and remove dependencies for this part</span>
               </div>
-              <div className="checkbox-grid">
-                {state.parts
-                  .filter((part) => part.id !== draft?.id)
-                  .map((part) => {
-                    const checked = draft?.dependencies?.includes(part.id) ?? false;
-                    return (
-                      <label className="checkbox-item" key={part.id}>
+              <div className="dependency-create-row">
+                <label>
+                  Add dependency from part
+                  <select value={newDependencyId} onChange={(event) => setNewDependencyId(event.target.value)}>
+                    <option value="">Select part</option>
+                    {addableDependencies.map((part) => (
+                      <option value={part.id} key={part.id}>{part.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    if (!newDependencyId) {
+                      return;
+                    }
+                    addDependencyToDraft(newDependencyId);
+                    setNewDependencyId('');
+                  }}
+                  disabled={!newDependencyId}
+                >
+                  Add dependency
+                </button>
+              </div>
+
+              {!draft?.dependencies?.length ? <p className="catalog-empty">No dependencies yet.</p> : null}
+              <div className="dependency-manager-list">
+                {(draft?.dependencies ?? []).map((dependencyId) => {
+                  const dependencyName = partsMap.get(dependencyId)?.name ?? dependencyId;
+                  return (
+                    <div className="dependency-manager-item" key={dependencyId}>
+                      <div className="dependency-manager-head">
+                        <strong>{dependencyName}</strong>
+                        <button type="button" className="danger-button" onClick={() => removeDependencyFromDraft(dependencyId)}>Remove</button>
+                      </div>
+                      <label>
+                        Dependency label
                         <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(event) => {
-                            if (!draft) {
-                              return;
-                            }
-
-                            const nextDependencies = event.target.checked
-                              ? [...draft.dependencies, part.id]
-                              : draft.dependencies.filter((dependencyId) => dependencyId !== part.id);
-                            const nextDependencyAnchors = { ...(draft.dependencyAnchors ?? {}) };
-                            if (event.target.checked) {
-                              nextDependencyAnchors[part.id] = nextDependencyAnchors[part.id] ?? suggestAnchors(part.id, draft.id);
-                            } else {
-                              delete nextDependencyAnchors[part.id];
-                            }
-
-                            setState((current) => ({
-                              ...current,
-                              draft: current.draft
-                                ? {
-                                    ...current.draft,
-                                    dependencies: nextDependencies,
-                                    dependencyAnchors: nextDependencyAnchors,
-                                  }
-                                : current.draft,
-                            }));
-                          }}
+                          type="text"
+                          value={draft?.dependencyLabels?.[dependencyId] ?? ''}
+                          onChange={(event) => updateDependencyLabel(dependencyId, event.target.value)}
+                          placeholder="e.g. Feeds status updates"
                         />
-                        <span>{part.name}</span>
                       </label>
-                    );
-                  })}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

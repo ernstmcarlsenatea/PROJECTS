@@ -228,7 +228,7 @@ body::after {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(340px, 0.9fr);
+  grid-template-columns: 1fr;
   gap: 1rem;
   align-items: start;
 }
@@ -299,6 +299,43 @@ body::after {
   stroke-width: 3;
   marker-end: url(#arrow);
   opacity: 0.9;
+}
+
+.edge-anchor-handle {
+  stroke: var(--outline);
+  stroke-width: 2;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.edge-anchor-source {
+  fill: #2a9886;
+}
+
+.edge-anchor-dependency {
+  fill: #ffa143;
+}
+
+.edge-anchor-handle:hover {
+  filter: brightness(1.05);
+}
+
+.edge-label {
+  pointer-events: auto;
+}
+
+.edge-label rect {
+  fill: rgba(255, 255, 255, 0.9);
+  stroke: rgba(36, 48, 70, 0.42);
+  stroke-width: 2;
+}
+
+.edge-label text {
+  fill: #243046;
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .edge-line.is-highlighted {
@@ -511,6 +548,39 @@ button:focus-visible {
   border: 3px solid rgba(36, 48, 70, 0.18);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.58);
+}
+
+.dependency-create-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: end;
+}
+
+.dependency-manager-list {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.7rem;
+}
+
+.dependency-manager-item {
+  border: 2px dashed rgba(36, 48, 70, 0.2);
+  border-radius: 14px;
+  padding: 0.65rem;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.dependency-manager-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.dependency-manager-head .danger-button {
+  padding: 0.45rem 0.7rem;
+  font-size: 0.86rem;
 }
 
 .link-anchor-editor {
