@@ -518,6 +518,7 @@ function App() {
                   <button
                     type="button"
                     key={part.id}
+                    data-part-id={part.id}
                     className={`graph-node ${selected} ${sourceClass}`}
                     style={{ left: position.x, top: position.y, width: `${NODE_WIDTH}px`, minHeight: `${NODE_HEIGHT}px`, '--node-color': color }}
                     onClick={() => selectPart(part.id)}

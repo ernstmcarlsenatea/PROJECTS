@@ -343,6 +343,34 @@ body::after {
   box-shadow: 0 0 0 5px rgba(255, 216, 79, 0.4), 0 10px 0 rgba(36, 48, 70, 0.12);
 }
 
+.graph-node::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  border: 3px solid var(--outline);
+  background: #fff;
+  box-shadow: 0 3px 0 rgba(36, 48, 70, 0.12);
+}
+
+.graph-node::before {
+  content: "";
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  border: 3px solid var(--outline);
+  background: #fff;
+  box-shadow: 0 3px 0 rgba(36, 48, 70, 0.12);
+}
+
 .node-title {
   font-weight: 900;
   font-size: 1.05rem;
