@@ -89,7 +89,10 @@ export function FirebaseAuthGate({ children }) {
       setStatus('working');
       try {
         await sendPasswordResetEmail(auth, trimmedEmail);
-        setInfo('Password reset email sent. Check your inbox.');
+        setInfo(
+          'If an account exists for that email, a password reset link has been sent. ' +
+          'Check spam too. If nothing arrives, no password account exists yet — use “Create account”.',
+        );
         setMode('sign-in');
       } catch (err) {
         console.error('sendPasswordResetEmail failed:', err);
