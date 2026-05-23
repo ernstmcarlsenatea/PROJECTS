@@ -320,6 +320,28 @@ function App() {
     const anchor = state.parts.find((part) => part.id === state.selectedId) ?? null;
     const draftPart = createEmptyDraft();
     draftPart.sourceId = anchor?.id ?? null;
+
+    if (anchor) {
+      const anchorPos = graph.positions.get(anchor.id);
+      if (anchorPos) {
+        // Place the draft one column to the right and same vertical position as the anchor.
+        // If that spot looks occupied, shift it down by one row height.
+        const candidateX = anchorPos.x + 280;
+        const candidateY = anchorPos.y;
+        const rowHeight = 170;
+        const NODE_W = 220;
+        const NODE_H = 158;
+        const overlap = displayParts.some((part) => {
+          const pos = graph.positions.get(part.id);
+          if (!pos) {
+            return false;
+          }
+          return Math.abs(pos.x - candidateX) < NODE_W && Math.abs(pos.y - candidateY) < NODE_H;
+        });
+        draftPart.position = { x: candidateX, y: overlap ? candidateY + rowHeight : candidateY };
+      }
+    }
+
     setState((current) => ({ ...current, selectedId: null, draft: draftPart, connectingFromId: null, pendingConnection: null }));
   }
 

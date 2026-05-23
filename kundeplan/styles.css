@@ -261,7 +261,7 @@ body::after {
 
 .graph-stage {
   position: relative;
-  min-height: 760px;
+  min-height: 520px;
   padding: 1rem;
   border-top: 4px dashed rgba(36, 48, 70, 0.16);
   overflow: auto;
