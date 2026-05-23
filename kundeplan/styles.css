@@ -788,7 +788,7 @@ button:focus-visible {
   display: inline-flex;
   align-items: center;
   padding: 0.28rem 0.55rem;
-  border-radius: 999px;
+  border-radius: 4px;
   background: #fff;
   border: 2px solid var(--outline);
   font-size: 0.75rem;

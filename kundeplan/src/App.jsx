@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
 
@@ -100,6 +102,7 @@ function App() {
   const dragRef = useRef(null);
   const suppressClickRef = useRef(null);
   const graphStageRef = useRef(null);
+  const graphCanvasRef = useRef(null);
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
   const displayParts = useMemo(() => {
@@ -754,6 +757,42 @@ function App() {
     return buildStructuredEdgePath(start, hover, state.connectionMode, 0);
   }, [graph.positions, state.connectingFromId, connectionHoverId, state.connectionMode]);
 
+  async function captureCanvas() {
+    const el = graphCanvasRef.current;
+    if (!el) return null;
+    // Capture at natural size regardless of CSS scale transform
+    return html2canvas(el, {
+      scale: 1,
+      useCORS: true,
+      width: graph.width,
+      height: graph.height,
+      scrollX: 0,
+      scrollY: 0,
+    });
+  }
+
+  async function exportPNG() {
+    const canvas = await captureCanvas();
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = 'kundeplan.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
+
+  async function exportPDF() {
+    const canvas = await captureCanvas();
+    if (!canvas) return;
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({
+      orientation: graph.width > graph.height ? 'landscape' : 'portrait',
+      unit: 'px',
+      format: [graph.width, graph.height],
+    });
+    pdf.addImage(imgData, 'PNG', 0, 0, graph.width, graph.height);
+    pdf.save('kundeplan.pdf');
+  }
+
   const connectionInstruction = state.connectingFromId
     ? `Click a target box to ${state.connectionMode === 'source' ? 'set a source link' : 'add a dependency'}.`
     : 'Click the link dot on a box, then click the target box.';
@@ -772,20 +811,10 @@ function App() {
         </div>
         <div className="hero-actions">
           <button type="button" className="primary-button" onClick={openNewPart}>New part</button>
-          <button type="button" className="secondary-button" onClick={resetDemo}>Reset demo</button>
           <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
           <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
         </div>
       </header>
-
-      <section className="stats-row" aria-label="Plan summary">
-        {stats.map(([value, label]) => (
-          <article className="stat-card" key={label}>
-            <span className="stat-value">{value}</span>
-            <span className="stat-label">{label}</span>
-          </article>
-        ))}
-      </section>
 
       <section className="workspace-grid">
         <section className={`panel board-panel ${isBoardFullscreen ? 'is-fullscreen' : ''}`}>
@@ -806,6 +835,12 @@ function App() {
               <button type="button" className="secondary-button" onClick={() => setIsBoardFullscreen((current) => !current)}>
                 {isBoardFullscreen ? 'Exit fullscreen' : 'Fullscreen map'}
               </button>
+              {isBoardFullscreen ? (
+                <>
+                  <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
+                  <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+                </>
+              ) : null}
               {state.connectingFromId ? (
                 <button type="button" className="secondary-button" onClick={cancelConnection}>
                   Cancel link
@@ -820,7 +855,8 @@ function App() {
 
           <div ref={graphStageRef} className="graph-stage" aria-live="polite" onClick={state.connectingFromId ? cancelConnection : undefined}>
             <div
-              className={`graph-canvas ${isBoardFullscreen ? 'is-fitted' : ''}`}
+              ref={graphCanvasRef}
+            className={`graph-canvas ${isBoardFullscreen ? 'is-fitted' : ''}`}
               style={{
                 width: `${graph.width}px`,
                 height: `${graph.height}px`,
@@ -1330,6 +1366,15 @@ function App() {
             </section>
           ))}
         </div>
+      </section>
+
+      <section className="stats-row" aria-label="Plan summary">
+        {stats.map(([value, label]) => (
+          <article className="stat-card" key={label}>
+            <span className="stat-value">{value}</span>
+            <span className="stat-label">{label}</span>
+          </article>
+        ))}
       </section>
     </main>
   );
