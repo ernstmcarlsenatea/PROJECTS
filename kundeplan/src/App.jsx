@@ -18,7 +18,11 @@ const ANCHOR_LABELS = {
   top: 'Top',
   bottom: 'Bottom',
 };
-const CLOUD_MIGRATION_KEY = 'kundeplan-cloud-migrated-v1';
+const CLOUD_MIGRATION_KEY_PREFIX = 'kundeplan-cloud-migrated-v1';
+
+function getCloudMigrationKey(userKey) {
+  return `${CLOUD_MIGRATION_KEY_PREFIX}:${userKey ?? 'public'}`;
+}
 
 function createDefaultState() {
   return {
@@ -227,7 +231,8 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             setVersionCount(cloudVersionCount);
           }
         } else {
-          const alreadyMigrated = localStorage.getItem(CLOUD_MIGRATION_KEY) === 'true';
+          const migrationKey = getCloudMigrationKey(cloudStore.userKey);
+          const alreadyMigrated = localStorage.getItem(migrationKey) === 'true';
           if (!alreadyMigrated) {
             await cloudStore.saveSnapshot({
               state: initialLocalSnapshot.state,
@@ -235,7 +240,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               versionCount: initialLocalSnapshot.versionCount,
               migratedFromLocal: true,
             });
-            localStorage.setItem(CLOUD_MIGRATION_KEY, 'true');
+            localStorage.setItem(migrationKey, 'true');
           }
         }
       } catch (error) {
