@@ -116,12 +116,9 @@ export function getGraphLayout(parts) {
     });
   }
 
-  // Derive canvas size from actual node extents so new nodes placed below existing
-  // ones expand the canvas downward instead of being clipped.
-  let maxX = 0;
+  // Canvas expands downward only — height tracks the furthest node, width stays fixed.
   let maxY = 0;
   for (const pos of positions.values()) {
-    if (pos.x + 220 > maxX) maxX = pos.x + 220;
     if (pos.y + 158 > maxY) maxY = pos.y + 158;
   }
 
@@ -129,7 +126,7 @@ export function getGraphLayout(parts) {
     nodes,
     positions,
     partsMap,
-    width: Math.max(1200, maxX + padding),
+    width: 1200,
     height: Math.max(760, maxY + padding),
   };
 }
