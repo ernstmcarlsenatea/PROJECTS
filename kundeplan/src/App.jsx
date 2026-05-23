@@ -3,6 +3,7 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
+import { createCloudStore } from './firebaseStore.js';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 const NODE_WIDTH = 220;
@@ -17,6 +18,33 @@ const ANCHOR_LABELS = {
   top: 'Top',
   bottom: 'Bottom',
 };
+const CLOUD_MIGRATION_KEY = 'kundeplan-cloud-migrated-v1';
+
+function createDefaultState() {
+  return {
+    parts: demoParts.map(clonePart),
+    selectedId: demoParts[0].id,
+    draft: null,
+    connectionMode: 'dependency',
+    connectingFromId: null,
+    pendingConnection: null,
+  };
+}
+
+function normalizePersistedState(parsed) {
+  if (!parsed?.parts || !Array.isArray(parsed.parts)) {
+    return createDefaultState();
+  }
+
+  return {
+    parts: parsed.parts.map(clonePart),
+    selectedId: parsed.selectedId ?? parsed.parts[0]?.id ?? null,
+    draft: parsed.draft ? clonePart(parsed.draft) : null,
+    connectionMode: parsed.connectionMode === 'source' ? 'source' : 'dependency',
+    connectingFromId: parsed.connectingFromId ?? null,
+    pendingConnection: parsed.pendingConnection ?? null,
+  };
+}
 
 function nextAnchorSide(side) {
   const index = ANCHOR_SIDES.indexOf(side);
@@ -63,24 +91,13 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return { parts: demoParts.map(clonePart), selectedId: demoParts[0].id, draft: null, connectionMode: 'dependency', connectingFromId: null, pendingConnection: null };
+      return createDefaultState();
     }
 
     const parsed = JSON.parse(raw);
-    if (!parsed?.parts) {
-      return { parts: demoParts.map(clonePart), selectedId: demoParts[0].id, draft: null, connectionMode: 'dependency', connectingFromId: null, pendingConnection: null };
-    }
-
-    return {
-      parts: parsed.parts.map(clonePart),
-      selectedId: parsed.selectedId ?? parsed.parts[0]?.id ?? null,
-      draft: parsed.draft ? clonePart(parsed.draft) : null,
-      connectionMode: parsed.connectionMode ?? 'dependency',
-      connectingFromId: parsed.connectingFromId ?? null,
-      pendingConnection: parsed.pendingConnection ?? null,
-    };
+    return normalizePersistedState(parsed);
   } catch {
-    return { parts: demoParts.map(clonePart), selectedId: demoParts[0].id, draft: null, connectionMode: 'dependency', connectingFromId: null, pendingConnection: null };
+    return createDefaultState();
   }
 }
 
@@ -123,6 +140,10 @@ function loadVersions() {
 
 function App({ auth = { enabled: false, activeAccount: null, signOut: null, publicAccess: false } }) {
   const activeAccount = auth.activeAccount ?? null;
+  const cloudStore = useMemo(
+    () => createCloudStore(auth),
+    [auth.enabled, auth.activeAccount?.username, auth.activeAccount?.homeAccountId],
+  );
   const [state, setState] = useState(() => loadState());
   const [connectionHoverId, setConnectionHoverId] = useState(null);
   const [draggingNodeId, setDraggingNodeId] = useState(null);
@@ -130,6 +151,15 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [newDependencyId, setNewDependencyId] = useState('');
   const [exportQuality, setExportQuality] = useState('normal');
   const [versionCount, setVersionCount] = useState(() => loadVersionCount());
+  const initialLocalSnapshot = useMemo(
+    () => ({
+      state: loadState(),
+      versions: loadVersions(),
+      versionCount: loadVersionCount(),
+    }),
+    [],
+  );
+  const cloudLoadedRef = useRef(false);
   const historyRef = useRef({ past: [], future: [] });
   const connectionStartRef = useRef(null);
   const dragRef = useRef(null);
@@ -166,6 +196,81 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
+
+  useEffect(() => {
+    let cancelled = false;
+    cloudLoadedRef.current = false;
+
+    async function bootstrapCloud() {
+      if (!cloudStore.enabled) {
+        cloudLoadedRef.current = true;
+        return;
+      }
+
+      try {
+        const cloudSnapshot = await cloudStore.loadSnapshot();
+        if (cancelled) {
+          return;
+        }
+
+        if (cloudSnapshot?.state) {
+          const normalizedCloudState = normalizePersistedState(cloudSnapshot.state);
+          setState(normalizedCloudState);
+
+          if (Array.isArray(cloudSnapshot.versions)) {
+            localStorage.setItem(VERSIONS_KEY, JSON.stringify(cloudSnapshot.versions));
+          }
+
+          const cloudVersionCount = parseInt(cloudSnapshot.versionCount, 10);
+          if (Number.isFinite(cloudVersionCount) && cloudVersionCount >= 0) {
+            localStorage.setItem(VERSION_COUNT_KEY, String(cloudVersionCount));
+            setVersionCount(cloudVersionCount);
+          }
+        } else {
+          const alreadyMigrated = localStorage.getItem(CLOUD_MIGRATION_KEY) === 'true';
+          if (!alreadyMigrated) {
+            await cloudStore.saveSnapshot({
+              state: initialLocalSnapshot.state,
+              versions: initialLocalSnapshot.versions,
+              versionCount: initialLocalSnapshot.versionCount,
+              migratedFromLocal: true,
+            });
+            localStorage.setItem(CLOUD_MIGRATION_KEY, 'true');
+          }
+        }
+      } catch (error) {
+        console.error('Cloud bootstrap failed:', error);
+      } finally {
+        if (!cancelled) {
+          cloudLoadedRef.current = true;
+        }
+      }
+    }
+
+    bootstrapCloud();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cloudStore.enabled, cloudStore.userKey, initialLocalSnapshot]);
+
+  useEffect(() => {
+    if (!cloudStore.enabled || !cloudLoadedRef.current) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      cloudStore.saveSnapshot({
+        state,
+        versions: loadVersions(),
+        versionCount,
+      }).catch((error) => {
+        console.error('Cloud sync failed:', error);
+      });
+    }, 450);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [cloudStore.enabled, cloudStore.userKey, state, versionCount]);
 
   useEffect(() => {
     function onKeyDown(event) {
