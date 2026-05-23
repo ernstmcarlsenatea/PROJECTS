@@ -897,6 +897,14 @@ button:focus-visible {
   font-weight: 900;
 }
 
+.ribbon-source {
+  background: #b6f0c1;
+}
+
+.ribbon-derived {
+  background: #ffd28a;
+}
+
 .node-legend {
   display: flex;
   flex-wrap: wrap;

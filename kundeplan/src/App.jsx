@@ -1685,11 +1685,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 {parts.map((part) => {
                   const summary = getSourceChainNames(part, partsMap);
                   const sourceName = part.sourceId ? partsMap.get(part.sourceId)?.name ?? 'Missing source' : 'Source root';
+                  const isDerived = summary.length > 0;
                   return (
                     <button type="button" className={`catalog-item ${part.id === selectedId ? 'is-selected' : ''}`} key={part.id} onClick={() => selectPart(part.id)}>
                       <div className="catalog-title">
                         <span>{part.name}</span>
-                        <span className="ribbon">{summary.length ? 'Derived' : 'Root'}</span>
+                        <span className={`ribbon ${isDerived ? 'ribbon-derived' : 'ribbon-source'}`}>{isDerived ? 'Derived' : 'Source'}</span>
                       </div>
                       <div className="supporting-note">Owner: {part.owner || 'Unassigned'}</div>
                       <div className="supporting-note">Presented in: {part.presentedIn || 'Not set'}</div>
