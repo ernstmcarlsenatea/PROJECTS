@@ -1,7 +1,7 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { doc, getDoc, getFirestore, serverTimestamp, setDoc } from 'firebase/firestore';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: (import.meta.env.VITE_FIREBASE_API_KEY ?? 'AIzaSyDorw7eeJtpJcqSr3crBIFiiq8OEqj56FA').trim(),
   authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? 'kundeplan.firebaseapp.com').trim(),
   projectId: (import.meta.env.VITE_FIREBASE_PROJECT_ID ?? 'kundeplan').trim(),
@@ -10,7 +10,7 @@ const firebaseConfig = {
   messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '519939507728').trim(),
 };
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 const REQUIRED_KEYS = ['apiKey', 'authDomain', 'projectId', 'appId'];
 
@@ -23,7 +23,7 @@ function getDb() {
     return null;
   }
 
-  return getFirestore(app);
+  return getFirestore(firebaseApp);
 }
 
 function sanitizeKey(value) {

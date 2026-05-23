@@ -4,6 +4,7 @@ import { PublicClientApplication } from '@azure/msal-browser';
 import { MsalProvider, useMsal } from '@azure/msal-react';
 import App from './App.jsx';
 import { AuthGuard } from './AuthGuard.jsx';
+import { FirebaseAuthGate } from './FirebaseAuthGate.jsx';
 import { msalConfig } from './authConfig.js';
 import '../styles.css';
 
@@ -26,9 +27,31 @@ const publicAccessValue = (import.meta.env.VITE_PUBLIC_ACCESS ?? 'true').trim().
 const isPublicAccessEnabled = ['1', 'true', 'yes', 'on'].includes(publicAccessValue);
 const configuredClientId = (import.meta.env.VITE_ENTRA_CLIENT_ID ?? '').trim();
 const isAuthConfigured = configuredClientId.length > 0 && configuredClientId !== 'your-client-id-here';
+const authProvider = (import.meta.env.VITE_AUTH_PROVIDER ?? '').trim().toLowerCase();
+const rootElement = document.getElementById('root');
 
-if (isPublicAccessEnabled || !isAuthConfigured) {
-  ReactDOM.createRoot(document.getElementById('root')).render(
+if (authProvider === 'firebase') {
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <FirebaseAuthGate>
+        {({ user, signOut }) => (
+          <App
+            auth={{
+              enabled: true,
+              activeAccount: {
+                username: user.email ?? user.uid,
+                name: user.displayName ?? user.email ?? user.uid,
+                homeAccountId: user.uid,
+              },
+              signOut,
+            }}
+          />
+        )}
+      </FirebaseAuthGate>
+    </React.StrictMode>,
+  );
+} else if (isPublicAccessEnabled || !isAuthConfigured) {
+  ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <App auth={{ enabled: false, activeAccount: null, signOut: null, publicAccess: true }} />
     </React.StrictMode>,
@@ -36,7 +59,7 @@ if (isPublicAccessEnabled || !isAuthConfigured) {
 } else {
   const msalInstance = new PublicClientApplication(msalConfig);
   msalInstance.initialize().then(() => {
-    ReactDOM.createRoot(document.getElementById('root')).render(
+    ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
         <MsalProvider instance={msalInstance}>
           <AuthGuard>
