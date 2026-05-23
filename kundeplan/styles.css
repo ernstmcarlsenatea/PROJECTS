@@ -200,6 +200,32 @@ body::after {
   white-space: nowrap;
 }
 
+.cloud-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.9rem;
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-md);
+  font-weight: 900;
+  font-size: 0.95rem;
+  box-shadow: 0 6px 0 rgba(36, 48, 70, 0.14);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.cloud-status-badge.is-success {
+  background: linear-gradient(180deg, #c9f59d, #9ee86a);
+}
+
+.cloud-status-badge.is-error,
+.cloud-status-badge.is-unavailable {
+  background: linear-gradient(180deg, #ffcfda, #ff9eb8);
+}
+
+.cloud-status-badge.is-working {
+  background: linear-gradient(180deg, #b7d6ff, #86b8ff);
+}
+
 .secondary-button {
   background: linear-gradient(180deg, #ffffff, #fffbef);
   color: var(--ink);

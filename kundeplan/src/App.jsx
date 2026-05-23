@@ -24,6 +24,14 @@ function getCloudMigrationKey(userKey) {
   return `${CLOUD_MIGRATION_KEY_PREFIX}:${userKey ?? 'public'}`;
 }
 
+function createLocalSnapshot(state, versionCount) {
+  return {
+    state,
+    versions: loadVersions(),
+    versionCount,
+  };
+}
+
 function createDefaultState() {
   return {
     parts: demoParts.map(clonePart),
@@ -149,6 +157,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     [auth.enabled, auth.activeAccount?.username, auth.activeAccount?.homeAccountId],
   );
   const [state, setState] = useState(() => loadState());
+  const [cloudMigrationStatus, setCloudMigrationStatus] = useState('idle');
   const [connectionHoverId, setConnectionHoverId] = useState(null);
   const [draggingNodeId, setDraggingNodeId] = useState(null);
   const [hoveredLink, setHoveredLink] = useState(null);
@@ -156,11 +165,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [exportQuality, setExportQuality] = useState('normal');
   const [versionCount, setVersionCount] = useState(() => loadVersionCount());
   const initialLocalSnapshot = useMemo(
-    () => ({
-      state: loadState(),
-      versions: loadVersions(),
-      versionCount: loadVersionCount(),
-    }),
+    () => createLocalSnapshot(loadState(), loadVersionCount()),
     [],
   );
   const cloudLoadedRef = useRef(false);
@@ -886,6 +891,33 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setVersionCount(nextCount);
   }
 
+  async function migrateLocalDataToCloud() {
+    if (!cloudStore.enabled) {
+      setCloudMigrationStatus('unavailable');
+      return;
+    }
+
+    if (!window.confirm('Upload the current local browser data and saved versions to Firebase cloud? This will overwrite the current cloud snapshot for this account.')) {
+      return;
+    }
+
+    setCloudMigrationStatus('working');
+
+    try {
+      const snapshot = createLocalSnapshot(state, versionCount);
+      await cloudStore.saveSnapshot({
+        ...snapshot,
+        migratedFromLocal: true,
+        forcedManualMigration: true,
+      });
+      localStorage.setItem(getCloudMigrationKey(cloudStore.userKey), 'true');
+      setCloudMigrationStatus('success');
+    } catch (error) {
+      console.error('Manual cloud migration failed:', error);
+      setCloudMigrationStatus('error');
+    }
+  }
+
   async function captureCanvas() {
     const el = graphCanvasRef.current;
     if (!el) return null;
@@ -959,8 +991,29 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
           <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
           <button type="button" className="version-save-button" onClick={saveVersion}>Save version</button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={migrateLocalDataToCloud}
+            disabled={!cloudStore.enabled || cloudMigrationStatus === 'working'}
+            title={cloudStore.enabled ? 'Upload current local browser data to Firebase for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
+          >
+            {cloudMigrationStatus === 'working' ? 'Migrating…' : 'Migrate local to cloud'}
+          </button>
           {versionCount > 0 ? (
             <span className="version-badge">v{versionLabel(versionCount)}</span>
+          ) : null}
+          {cloudMigrationStatus !== 'idle' ? (
+            <span className={`cloud-status-badge is-${cloudMigrationStatus}`}>
+              {
+                {
+                  success: 'Cloud updated',
+                  error: 'Migration failed',
+                  unavailable: 'Cloud unavailable',
+                  working: 'Uploading…',
+                }[cloudMigrationStatus]
+              }
+            </span>
           ) : null}
           {!auth.enabled ? (
             <span className="auth-disabled-badge" title={auth.publicAccess ? 'Public access is enabled. Sign-in is not required.' : 'SSO is disabled until an Entra App Registration client ID is configured.'}>
