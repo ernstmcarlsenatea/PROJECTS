@@ -1065,7 +1065,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           </p>
         </div>
         <div className="hero-actions">
-          <button type="button" className="primary-button" onClick={openNewPart}>New part</button>
           <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
           <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
           <button type="button" className="version-save-button" onClick={saveVersion}>Save version</button>
@@ -1099,10 +1098,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         <div className="panel-header cloud-panel-header">
           <div>
             <p className="panel-kicker">Cloud sync</p>
-            <h2>Firebase backup and restore</h2>
-            <p className="panel-note">
-              Push this browser&apos;s local data to Firebase, or restore the latest Firebase snapshot back into this device.
-            </p>
           </div>
           <div className="cloud-actions">
             <button
@@ -1164,6 +1159,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               <h2>Parts and dependencies</h2>
             </div>
             <div className="panel-tools">
+              <button type="button" className="primary-button" onClick={openNewPart}>New part</button>
               <label>
                 Connection mode
                 <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)}>
