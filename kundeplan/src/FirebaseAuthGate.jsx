@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  createUserWithEmailAndPassword,
   getAuth,
-  isSignInWithEmailLink,
   onAuthStateChanged,
-  sendSignInLinkToEmail,
-  signInWithEmailLink,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
 import { firebaseApp } from './firebaseStore.js';
-
-const EMAIL_STORAGE_KEY = 'kundeplan-firebase-signin-email';
 
 function getAllowedDomain() {
   const raw = (import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? '').trim().toLowerCase();
@@ -18,26 +16,43 @@ function getAllowedDomain() {
 
 function isEmailAllowed(email) {
   const allowedDomain = getAllowedDomain();
-  if (!allowedDomain) {
-    return true;
-  }
+  if (!allowedDomain) return true;
   return typeof email === 'string' && email.toLowerCase().endsWith(`@${allowedDomain}`);
 }
 
-function buildActionCodeSettings() {
-  return {
-    url: window.location.origin + window.location.pathname,
-    handleCodeInApp: true,
-  };
+function describeFirebaseError(err) {
+  const code = err?.code ?? '';
+  switch (code) {
+    case 'auth/invalid-email':
+      return 'That email address is not valid.';
+    case 'auth/user-disabled':
+      return 'This account has been disabled.';
+    case 'auth/user-not-found':
+      return 'No account found for that email. Use “Create account” first.';
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Wrong email or password.';
+    case 'auth/email-already-in-use':
+      return 'An account already exists for that email. Use “Sign in” instead.';
+    case 'auth/weak-password':
+      return 'Password is too weak. Use at least 8 characters.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Wait a few minutes and try again.';
+    default:
+      return err?.message ?? 'Authentication failed.';
+  }
 }
 
 export function FirebaseAuthGate({ children }) {
   const auth = useMemo(() => getAuth(firebaseApp), []);
   const [user, setUser] = useState(() => auth.currentUser);
   const [ready, setReady] = useState(false);
+  const [mode, setMode] = useState('sign-in');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
   const allowedDomain = getAllowedDomain();
 
   useEffect(() => {
@@ -55,69 +70,63 @@ export function FirebaseAuthGate({ children }) {
     return unsubscribe;
   }, [auth, allowedDomain]);
 
-  useEffect(() => {
-    if (!isSignInWithEmailLink(auth, window.location.href)) {
-      return;
-    }
-
-    let storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
-    if (!storedEmail) {
-      storedEmail = window.prompt('Please confirm the email you used to sign in:') ?? '';
-    }
-
-    if (!storedEmail) {
-      setError('Sign-in cancelled. Please request a new link.');
-      return;
-    }
-
-    setStatus('completing');
-    signInWithEmailLink(auth, storedEmail, window.location.href)
-      .then(() => {
-        window.localStorage.removeItem(EMAIL_STORAGE_KEY);
-        window.history.replaceState({}, document.title, window.location.pathname);
-        setStatus('idle');
-      })
-      .catch((err) => {
-        console.error('Email link sign-in failed:', err);
-        setError(err?.message ?? 'Sign-in failed. Please request a new link.');
-        setStatus('idle');
-      });
-  }, [auth]);
-
-  async function handleSendLink(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setError(null);
+    setInfo(null);
 
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
       setError('Enter your email address.');
       return;
     }
-    if (!isEmailAllowed(trimmed)) {
+    if (!isEmailAllowed(trimmedEmail)) {
       setError(`Only ${allowedDomain ? `@${allowedDomain}` : 'allowed'} accounts can sign in.`);
       return;
     }
 
-    setStatus('sending');
+    if (mode === 'reset') {
+      setStatus('working');
+      try {
+        await sendPasswordResetEmail(auth, trimmedEmail);
+        setInfo('Password reset email sent. Check your inbox.');
+        setMode('sign-in');
+      } catch (err) {
+        console.error('sendPasswordResetEmail failed:', err);
+        setError(describeFirebaseError(err));
+      } finally {
+        setStatus('idle');
+      }
+      return;
+    }
+
+    if (!password || password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+
+    setStatus('working');
     try {
-      await sendSignInLinkToEmail(auth, trimmed, buildActionCodeSettings());
-      window.localStorage.setItem(EMAIL_STORAGE_KEY, trimmed);
-      setStatus('sent');
+      if (mode === 'create') {
+        await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+      } else {
+        await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      }
+      setPassword('');
     } catch (err) {
-      console.error('sendSignInLinkToEmail failed:', err);
-      setError(err?.message ?? 'Could not send sign-in link.');
+      console.error('Auth failed:', err);
+      setError(describeFirebaseError(err));
+    } finally {
       setStatus('idle');
     }
   }
 
-  if (!ready || status === 'completing') {
+  if (!ready) {
     return (
       <div className="auth-screen">
         <div className="auth-card">
           <p className="auth-label">Kundeplan</p>
-          <p className="auth-status">
-            {status === 'completing' ? 'Completing sign-in…' : 'Checking session…'}
-          </p>
+          <p className="auth-status">Checking session…</p>
           <span className="auth-spinner" aria-hidden="true" />
         </div>
       </div>
@@ -125,17 +134,26 @@ export function FirebaseAuthGate({ children }) {
   }
 
   if (!user) {
+    const showPassword = mode !== 'reset';
+    const submitLabel = {
+      'sign-in': status === 'working' ? 'Signing in…' : 'Sign in',
+      create: status === 'working' ? 'Creating account…' : 'Create account',
+      reset: status === 'working' ? 'Sending…' : 'Send reset email',
+    }[mode];
+
     return (
       <div className="auth-screen">
         <div className="auth-card">
           <p className="auth-label">Kundeplan</p>
-          <h1 className="auth-title">Sign in</h1>
+          <h1 className="auth-title">
+            {mode === 'create' ? 'Create account' : mode === 'reset' ? 'Reset password' : 'Sign in'}
+          </h1>
           <p className="auth-status">
             {allowedDomain
-              ? `Use your @${allowedDomain} email. We will send you a one-time sign-in link.`
-              : 'Enter your email. We will send you a one-time sign-in link.'}
+              ? `Use your @${allowedDomain} email address.`
+              : 'Enter your email and password.'}
           </p>
-          <form onSubmit={handleSendLink} className="auth-form">
+          <form onSubmit={handleSubmit} className="auth-form">
             <label className="auth-field">
               <span>Email</span>
               <input
@@ -147,19 +165,55 @@ export function FirebaseAuthGate({ children }) {
                 required
               />
             </label>
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={status === 'sending'}
-            >
-              {status === 'sending' ? 'Sending…' : 'Send sign-in link'}
+            {showPassword ? (
+              <label className="auth-field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
+                  minLength={8}
+                  required
+                />
+              </label>
+            ) : null}
+            <button type="submit" className="primary-button" disabled={status === 'working'}>
+              {submitLabel}
             </button>
           </form>
-          {status === 'sent' ? (
-            <p className="auth-status auth-success">
-              Sign-in link sent. Open it on this device to continue.
-            </p>
-          ) : null}
+
+          <div className="auth-links">
+            {mode !== 'sign-in' ? (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => { setMode('sign-in'); setError(null); setInfo(null); }}
+              >
+                Back to sign in
+              </button>
+            ) : null}
+            {mode !== 'create' ? (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => { setMode('create'); setError(null); setInfo(null); }}
+              >
+                Create account
+              </button>
+            ) : null}
+            {mode !== 'reset' ? (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => { setMode('reset'); setError(null); setInfo(null); }}
+              >
+                Forgot password?
+              </button>
+            ) : null}
+          </div>
+
+          {info ? <p className="auth-status auth-success">{info}</p> : null}
           {error ? <p className="auth-status auth-error">{error}</p> : null}
         </div>
       </div>
