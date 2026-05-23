@@ -148,13 +148,24 @@ body::after {
 
 .primary-button,
 .secondary-button,
-.danger-button {
-  padding: 0.9rem 1.1rem;
+.danger-button,
+.version-save-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 0.85rem;
   font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
   font-weight: 800;
+  white-space: nowrap;
   cursor: pointer;
   transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
-  box-shadow: 0 8px 0 rgba(36, 48, 70, 0.15);
+  box-shadow: 0 5px 0 rgba(36, 48, 70, 0.15);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-md);
 }
 
 .primary-button {
@@ -163,26 +174,18 @@ body::after {
 }
 
 .version-save-button {
-  padding: 0.9rem 1.1rem;
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-  transition: transform 140ms ease, box-shadow 140ms ease;
-  box-shadow: 0 8px 0 rgba(36, 48, 70, 0.15);
-  border: 3px solid var(--outline);
-  border-radius: var(--radius-md);
   background: linear-gradient(180deg, #c9f59d, #9ee86a);
   color: var(--ink);
 }
 
 .version-save-button:hover {
   transform: translateY(-2px) rotate(-0.3deg);
-  box-shadow: 0 12px 0 rgba(36, 48, 70, 0.14);
+  box-shadow: 0 8px 0 rgba(36, 48, 70, 0.14);
 }
 
 .version-save-button:active {
-  transform: translateY(3px);
-  box-shadow: 0 4px 0 rgba(36, 48, 70, 0.18);
+  transform: translateY(2px);
+  box-shadow: 0 3px 0 rgba(36, 48, 70, 0.18);
 }
 
 .version-badge {
@@ -260,7 +263,7 @@ body::after {
 .graph-node:hover,
 .catalog-item:hover {
   transform: translateY(-2px) rotate(-0.3deg);
-  box-shadow: 0 12px 0 rgba(36, 48, 70, 0.14);
+  box-shadow: 0 8px 0 rgba(36, 48, 70, 0.14);
 }
 
 .primary-button:active,
@@ -268,8 +271,8 @@ body::after {
 .danger-button:active,
 .graph-node:active,
 .catalog-item:active {
-  transform: translateY(3px);
-  box-shadow: 0 4px 0 rgba(36, 48, 70, 0.18);
+  transform: translateY(2px);
+  box-shadow: 0 3px 0 rgba(36, 48, 70, 0.18);
 }
 
 .stats-row {
