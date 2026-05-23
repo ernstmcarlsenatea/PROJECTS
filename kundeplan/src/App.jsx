@@ -1165,13 +1165,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             </div>
             <div className="panel-tools">
               <label>
-                Export quality
-                <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                </select>
-              </label>
-              <label>
                 Connection mode
                 <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)}>
                   <option value="dependency">Dependency</option>
@@ -1190,6 +1183,13 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <span className="edge-legend-item edge-legend-source">Source link</span>
                 <span className="edge-legend-item edge-legend-dependency">Dependency</span>
               </div>
+              <label style={{ marginLeft: 'auto' }}>
+                Export quality
+                <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
             </div>
           </div>
 
