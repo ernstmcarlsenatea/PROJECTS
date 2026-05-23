@@ -32,6 +32,28 @@ function createLocalSnapshot(state, versionCount) {
   };
 }
 
+function applyCloudSnapshot(cloudSnapshot, setState, setVersionCount) {
+  if (!cloudSnapshot?.state) {
+    return false;
+  }
+
+  const normalizedCloudState = normalizePersistedState(cloudSnapshot.state);
+  setState(normalizedCloudState);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedCloudState));
+
+  if (Array.isArray(cloudSnapshot.versions)) {
+    localStorage.setItem(VERSIONS_KEY, JSON.stringify(cloudSnapshot.versions));
+  }
+
+  const cloudVersionCount = parseInt(cloudSnapshot.versionCount, 10);
+  if (Number.isFinite(cloudVersionCount) && cloudVersionCount >= 0) {
+    localStorage.setItem(VERSION_COUNT_KEY, String(cloudVersionCount));
+    setVersionCount(cloudVersionCount);
+  }
+
+  return true;
+}
+
 function createDefaultState() {
   return {
     parts: demoParts.map(clonePart),
@@ -157,7 +179,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     [auth.enabled, auth.activeAccount?.username, auth.activeAccount?.homeAccountId],
   );
   const [state, setState] = useState(() => loadState());
-  const [cloudMigrationStatus, setCloudMigrationStatus] = useState('idle');
+  const [cloudActionStatus, setCloudActionStatus] = useState('idle');
   const [connectionHoverId, setConnectionHoverId] = useState(null);
   const [draggingNodeId, setDraggingNodeId] = useState(null);
   const [hoveredLink, setHoveredLink] = useState(null);
@@ -223,18 +245,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         }
 
         if (cloudSnapshot?.state) {
-          const normalizedCloudState = normalizePersistedState(cloudSnapshot.state);
-          setState(normalizedCloudState);
-
-          if (Array.isArray(cloudSnapshot.versions)) {
-            localStorage.setItem(VERSIONS_KEY, JSON.stringify(cloudSnapshot.versions));
-          }
-
-          const cloudVersionCount = parseInt(cloudSnapshot.versionCount, 10);
-          if (Number.isFinite(cloudVersionCount) && cloudVersionCount >= 0) {
-            localStorage.setItem(VERSION_COUNT_KEY, String(cloudVersionCount));
-            setVersionCount(cloudVersionCount);
-          }
+          applyCloudSnapshot(cloudSnapshot, setState, setVersionCount);
         } else {
           const migrationKey = getCloudMigrationKey(cloudStore.userKey);
           const alreadyMigrated = localStorage.getItem(migrationKey) === 'true';
@@ -893,7 +904,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
   async function migrateLocalDataToCloud() {
     if (!cloudStore.enabled) {
-      setCloudMigrationStatus('unavailable');
+      setCloudActionStatus('unavailable');
       return;
     }
 
@@ -901,7 +912,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       return;
     }
 
-    setCloudMigrationStatus('working');
+    setCloudActionStatus('migrating');
 
     try {
       const snapshot = createLocalSnapshot(state, versionCount);
@@ -911,10 +922,32 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         forcedManualMigration: true,
       });
       localStorage.setItem(getCloudMigrationKey(cloudStore.userKey), 'true');
-      setCloudMigrationStatus('success');
+      setCloudActionStatus('migrated');
     } catch (error) {
       console.error('Manual cloud migration failed:', error);
-      setCloudMigrationStatus('error');
+      setCloudActionStatus('error');
+    }
+  }
+
+  async function restoreCloudDataToLocal() {
+    if (!cloudStore.enabled) {
+      setCloudActionStatus('unavailable');
+      return;
+    }
+
+    if (!window.confirm('Replace the current local browser data with the latest Firebase cloud snapshot for this account?')) {
+      return;
+    }
+
+    setCloudActionStatus('restoring');
+
+    try {
+      const cloudSnapshot = await cloudStore.loadSnapshot();
+      const restored = applyCloudSnapshot(cloudSnapshot, setState, setVersionCount);
+      setCloudActionStatus(restored ? 'restored' : 'empty');
+    } catch (error) {
+      console.error('Restore from cloud failed:', error);
+      setCloudActionStatus('error');
     }
   }
 
@@ -991,29 +1024,8 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
           <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
           <button type="button" className="version-save-button" onClick={saveVersion}>Save version</button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={migrateLocalDataToCloud}
-            disabled={!cloudStore.enabled || cloudMigrationStatus === 'working'}
-            title={cloudStore.enabled ? 'Upload current local browser data to Firebase for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
-          >
-            {cloudMigrationStatus === 'working' ? 'Migrating…' : 'Migrate local to cloud'}
-          </button>
           {versionCount > 0 ? (
             <span className="version-badge">v{versionLabel(versionCount)}</span>
-          ) : null}
-          {cloudMigrationStatus !== 'idle' ? (
-            <span className={`cloud-status-badge is-${cloudMigrationStatus}`}>
-              {
-                {
-                  success: 'Cloud updated',
-                  error: 'Migration failed',
-                  unavailable: 'Cloud unavailable',
-                  working: 'Uploading…',
-                }[cloudMigrationStatus]
-              }
-            </span>
           ) : null}
           {!auth.enabled ? (
             <span className="auth-disabled-badge" title={auth.publicAccess ? 'Public access is enabled. Sign-in is not required.' : 'SSO is disabled until an Entra App Registration client ID is configured.'}>
@@ -1036,6 +1048,56 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           ) : null}
         </div>
       </header>
+
+      <section className="panel cloud-panel">
+        <div className="panel-header cloud-panel-header">
+          <div>
+            <p className="panel-kicker">Cloud sync</p>
+            <h2>Firebase backup and restore</h2>
+            <p className="panel-note">
+              Push this browser&apos;s local data to Firebase, or restore the latest Firebase snapshot back into this device.
+            </p>
+          </div>
+          <div className="cloud-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={migrateLocalDataToCloud}
+              disabled={!cloudStore.enabled || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
+              title={cloudStore.enabled ? 'Upload current local browser data to Firebase for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
+            >
+              {cloudActionStatus === 'migrating' ? 'Migrating…' : 'Migrate local to cloud'}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={restoreCloudDataToLocal}
+              disabled={!cloudStore.enabled || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
+              title={cloudStore.enabled ? 'Replace local browser data with the latest Firebase snapshot for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
+            >
+              {cloudActionStatus === 'restoring' ? 'Restoring…' : 'Restore cloud to local'}
+            </button>
+            <span className="pill cloud-user-pill">
+              {cloudStore.enabled ? `Cloud user: ${cloudStore.userKey}` : 'Firebase not configured'}
+            </span>
+            {cloudActionStatus !== 'idle' ? (
+              <span className={`cloud-status-badge is-${cloudActionStatus}`}>
+                {
+                  {
+                    migrated: 'Cloud updated',
+                    restored: 'Local data restored',
+                    empty: 'No cloud snapshot found',
+                    error: 'Cloud action failed',
+                    unavailable: 'Cloud unavailable',
+                    migrating: 'Uploading…',
+                    restoring: 'Downloading…',
+                  }[cloudActionStatus]
+                }
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </section>
 
       <section className="workspace-grid">
         <section className="panel board-panel">

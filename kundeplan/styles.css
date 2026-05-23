@@ -226,6 +226,20 @@ body::after {
   background: linear-gradient(180deg, #b7d6ff, #86b8ff);
 }
 
+.cloud-status-badge.is-migrating,
+.cloud-status-badge.is-restoring {
+  background: linear-gradient(180deg, #b7d6ff, #86b8ff);
+}
+
+.cloud-status-badge.is-restored,
+.cloud-status-badge.is-migrated {
+  background: linear-gradient(180deg, #c9f59d, #9ee86a);
+}
+
+.cloud-status-badge.is-empty {
+  background: linear-gradient(180deg, #ffe6a1, #ffd16a);
+}
+
 .secondary-button {
   background: linear-gradient(180deg, #ffffff, #fffbef);
   color: var(--ink);
@@ -301,6 +315,26 @@ body::after {
   gap: 1rem;
   align-items: start;
   margin-top: 2.5rem;
+}
+
+.cloud-panel {
+  margin-top: 1rem;
+}
+
+.cloud-panel-header {
+  align-items: center;
+}
+
+.cloud-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.cloud-user-pill {
+  white-space: nowrap;
 }
 
 .panel {
@@ -906,7 +940,8 @@ button:focus-visible {
   }
 
   .hero-actions,
-  .form-actions {
+  .form-actions,
+  .cloud-actions {
     width: 100%;
   }
 
@@ -914,6 +949,12 @@ button:focus-visible {
   .secondary-button,
   .danger-button {
     width: 100%;
+  }
+
+  .cloud-user-pill,
+  .cloud-status-badge {
+    width: 100%;
+    justify-content: center;
   }
 
   .stats-row {
