@@ -10,6 +10,8 @@ const firebaseConfig = {
   messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '519939507728').trim(),
 };
 
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
 const REQUIRED_KEYS = ['apiKey', 'authDomain', 'projectId', 'appId'];
 
 function isConfigured() {
@@ -21,7 +23,6 @@ function getDb() {
     return null;
   }
 
-  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   return getFirestore(app);
 }
 
