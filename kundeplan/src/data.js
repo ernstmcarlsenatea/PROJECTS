@@ -1,4 +1,6 @@
 export const STORAGE_KEY = 'kundeplan-cartoon-atlas-v2';
+export const VERSIONS_KEY = 'kundeplan-versions-v1';
+export const VERSION_COUNT_KEY = 'kundeplan-version-count-v1';
 
 export const demoParts = [
   {

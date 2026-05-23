@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { STORAGE_KEY, createEmptyDraft, createId, demoParts } from './data.js';
+import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 158;
+const EXPORT_QUALITY_SCALE = {
+  normal: 1,
+  high: 2,
+};
 const ANCHOR_LABELS = {
   left: 'Left',
   right: 'Right',
@@ -89,19 +93,47 @@ function DetailLine({ label, value }) {
   );
 }
 
-function App() {
+function versionLabel(count) {
+  if (count <= 0) return null;
+  const major = Math.floor((count - 1) / 10) + 1;
+  const minor = (count - 1) % 10;
+  return `${major}.${minor}`;
+}
+
+function loadVersionCount() {
+  try {
+    const raw = localStorage.getItem(VERSION_COUNT_KEY);
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function loadVersions() {
+  try {
+    const raw = localStorage.getItem(VERSIONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function App({ auth = { enabled: false, activeAccount: null, signOut: null, publicAccess: false } }) {
+  const activeAccount = auth.activeAccount ?? null;
   const [state, setState] = useState(() => loadState());
   const [connectionHoverId, setConnectionHoverId] = useState(null);
   const [draggingNodeId, setDraggingNodeId] = useState(null);
   const [hoveredLink, setHoveredLink] = useState(null);
-  const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
   const [newDependencyId, setNewDependencyId] = useState('');
-  const [fitView, setFitView] = useState({ scale: 1, offsetX: 0, offsetY: 0 });
+  const [exportQuality, setExportQuality] = useState('normal');
+  const [versionCount, setVersionCount] = useState(() => loadVersionCount());
   const historyRef = useRef({ past: [], future: [] });
   const connectionStartRef = useRef(null);
   const dragRef = useRef(null);
   const suppressClickRef = useRef(null);
-  const graphStageRef = useRef(null);
   const graphCanvasRef = useRef(null);
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
@@ -113,6 +145,23 @@ function App() {
     return [...state.parts, draft];
   }, [state.parts, draft]);
   const graph = useMemo(() => getGraphLayout(displayParts), [displayParts]);
+  const exportBounds = useMemo(() => {
+    const overflowPadding = 20;
+    let maxX = graph.width;
+    let maxY = graph.height;
+
+    for (const part of state.parts) {
+      const position = graph.positions.get(part.id);
+      if (!position) {
+        continue;
+      }
+
+      maxX = Math.max(maxX, position.x + NODE_WIDTH + overflowPadding);
+      maxY = Math.max(maxY, position.y + NODE_HEIGHT + overflowPadding);
+    }
+
+    return { width: Math.ceil(maxX), height: Math.ceil(maxY) };
+  }, [graph.width, graph.height, graph.positions, state.parts]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -139,57 +188,8 @@ function App() {
   });
 
   useEffect(() => {
-    function onEscape(event) {
-      if (event.key === 'Escape') {
-        setIsBoardFullscreen(false);
-      }
-    }
-
-    window.addEventListener('keydown', onEscape);
-    return () => window.removeEventListener('keydown', onEscape);
-  }, []);
-
-  useEffect(() => {
     setNewDependencyId('');
   }, [draft?.id]);
-
-  useEffect(() => {
-    if (!isBoardFullscreen) {
-      setFitView({ scale: 1, offsetX: 0, offsetY: 0 });
-      return;
-    }
-
-    const stage = graphStageRef.current;
-    if (!stage) {
-      return;
-    }
-
-    function recalcFit() {
-      const padding = 18;
-      const availableWidth = Math.max(1, stage.clientWidth - padding * 2);
-      const availableHeight = Math.max(1, stage.clientHeight - padding * 2);
-      const scale = Math.min(availableWidth / graph.width, availableHeight / graph.height);
-      const boundedScale = Math.max(0.2, Math.min(1.4, scale));
-      const scaledWidth = graph.width * boundedScale;
-      const scaledHeight = graph.height * boundedScale;
-
-      setFitView({
-        scale: boundedScale,
-        offsetX: Math.max(0, (stage.clientWidth - scaledWidth) / 2),
-        offsetY: Math.max(0, (stage.clientHeight - scaledHeight) / 2),
-      });
-    }
-
-    recalcFit();
-
-    if (typeof ResizeObserver === 'undefined') {
-      return undefined;
-    }
-
-    const observer = new ResizeObserver(recalcFit);
-    observer.observe(stage);
-    return () => observer.disconnect();
-  }, [isBoardFullscreen, graph.width, graph.height]);
 
   const selectedResolved = draft ? getResolvedPart(draft.id, state.parts) ?? draft : null;
   const sourceChain = draft ? getSourceChainNames(draft, partsMap) : [];
@@ -504,7 +504,7 @@ function App() {
       return;
     }
 
-    const scale = isBoardFullscreen ? fitView.scale : 1;
+    const scale = 1;
     const dx = (event.clientX - dragging.pointerX) / scale;
     const dy = (event.clientY - dragging.pointerY) / scale;
     if (!dragging.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
@@ -757,17 +757,50 @@ function App() {
     return buildStructuredEdgePath(start, hover, state.connectionMode, 0);
   }, [graph.positions, state.connectingFromId, connectionHoverId, state.connectionMode]);
 
+  function saveVersion() {
+    const nextCount = versionCount + 1;
+    const snapshot = {
+      versionLabel: versionLabel(nextCount),
+      savedAt: new Date().toISOString(),
+      parts: state.parts.map(clonePart),
+      selectedId: state.selectedId,
+    };
+    const existing = loadVersions();
+    const updated = [...existing, snapshot];
+    try {
+      localStorage.setItem(VERSIONS_KEY, JSON.stringify(updated));
+      localStorage.setItem(VERSION_COUNT_KEY, String(nextCount));
+    } catch {
+      // localStorage quota exceeded — silently ignore
+    }
+    setVersionCount(nextCount);
+  }
+
   async function captureCanvas() {
     const el = graphCanvasRef.current;
     if (!el) return null;
-    // Capture at natural size regardless of CSS scale transform
+
+    const exportPadding = 96;
+    const captureWidth = exportBounds.width + exportPadding * 2;
+    const captureHeight = exportBounds.height + exportPadding * 2;
+    const captureScale = EXPORT_QUALITY_SCALE[exportQuality] ?? EXPORT_QUALITY_SCALE.normal;
+
     return html2canvas(el, {
-      scale: 1,
+      scale: captureScale,
       useCORS: true,
-      width: graph.width,
-      height: graph.height,
+      backgroundColor: '#fffdf6',
+      width: captureWidth,
+      height: captureHeight,
+      x: -exportPadding,
+      y: -exportPadding,
       scrollX: 0,
       scrollY: 0,
+      onclone: (clonedDocument) => {
+        const clonedCanvas = clonedDocument.querySelector('.graph-canvas');
+        if (clonedCanvas) {
+          clonedCanvas.classList.add('is-exporting');
+        }
+      },
     });
   }
 
@@ -784,12 +817,14 @@ function App() {
     const canvas = await captureCanvas();
     if (!canvas) return;
     const imgData = canvas.toDataURL('image/png');
+    const pdfWidth = canvas.width;
+    const pdfHeight = canvas.height;
     const pdf = new jsPDF({
-      orientation: graph.width > graph.height ? 'landscape' : 'portrait',
+      orientation: pdfWidth > pdfHeight ? 'landscape' : 'portrait',
       unit: 'px',
-      format: [graph.width, graph.height],
+      format: [pdfWidth, pdfHeight],
     });
-    pdf.addImage(imgData, 'PNG', 0, 0, graph.width, graph.height);
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
     pdf.save('kundeplan.pdf');
   }
 
@@ -813,17 +848,47 @@ function App() {
           <button type="button" className="primary-button" onClick={openNewPart}>New part</button>
           <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
           <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
+          <button type="button" className="version-save-button" onClick={saveVersion}>Save version</button>
+          {versionCount > 0 ? (
+            <span className="version-badge">v{versionLabel(versionCount)}</span>
+          ) : null}
+          {!auth.enabled ? (
+            <span className="auth-disabled-badge" title={auth.publicAccess ? 'Public access is enabled. Sign-in is not required.' : 'SSO is disabled until an Entra App Registration client ID is configured.'}>
+              {auth.publicAccess ? 'Public access' : 'SSO not configured'}
+            </span>
+          ) : null}
+          {activeAccount ? (
+            <>
+              <span className="user-badge" title={activeAccount.username}>
+                {activeAccount.name ?? activeAccount.username}
+              </span>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => auth.signOut?.()}
+              >
+                Sign out
+              </button>
+            </>
+          ) : null}
         </div>
       </header>
 
       <section className="workspace-grid">
-        <section className={`panel board-panel ${isBoardFullscreen ? 'is-fullscreen' : ''}`}>
+        <section className="panel board-panel">
           <div className="panel-header">
             <div>
               <p className="panel-kicker">Blueprint map</p>
               <h2>Parts and dependencies</h2>
             </div>
             <div className="panel-tools">
+              <label>
+                Export quality
+                <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
               <label>
                 Connection mode
                 <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)}>
@@ -832,15 +897,8 @@ function App() {
                 </select>
               </label>
               <span className="pill">{connectionInstruction}</span>
-              <button type="button" className="secondary-button" onClick={() => setIsBoardFullscreen((current) => !current)}>
-                {isBoardFullscreen ? 'Exit fullscreen' : 'Fullscreen map'}
-              </button>
-              {isBoardFullscreen ? (
-                <>
-                  <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
-                  <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
-                </>
-              ) : null}
+              <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
+              <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
               {state.connectingFromId ? (
                 <button type="button" className="secondary-button" onClick={cancelConnection}>
                   Cancel link
@@ -853,16 +911,13 @@ function App() {
             </div>
           </div>
 
-          <div ref={graphStageRef} className="graph-stage" aria-live="polite" onClick={state.connectingFromId ? cancelConnection : undefined}>
+          <div className="graph-stage" aria-live="polite" onClick={state.connectingFromId ? cancelConnection : undefined}>
             <div
               ref={graphCanvasRef}
-            className={`graph-canvas ${isBoardFullscreen ? 'is-fitted' : ''}`}
+            className="graph-canvas"
               style={{
                 width: `${graph.width}px`,
                 height: `${graph.height}px`,
-                transform: isBoardFullscreen
-                  ? `translate(${Math.round(fitView.offsetX)}px, ${Math.round(fitView.offsetY)}px) scale(${fitView.scale})`
-                  : undefined,
               }}
             >
             <svg viewBox={`0 0 ${graph.width} ${graph.height}`} preserveAspectRatio="xMinYMin meet" style={{ width: `${graph.width}px`, height: `${graph.height}px` }} aria-hidden="true">
@@ -1337,7 +1392,18 @@ function App() {
             <p className="panel-kicker">Catalog</p>
             <h2>All parts grouped by residence</h2>
           </div>
-          <p className="panel-note">This table gives the exact owner, presentation point, and dependency footprint for each part.</p>
+          <div className="panel-tools">
+            <p className="panel-note">This table gives the exact owner, presentation point, and dependency footprint for each part.</p>
+            <label>
+              Export quality
+              <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
+            <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+          </div>
         </div>
         <div className="catalog">
           {groupedParts.map(([residence, parts]) => (
