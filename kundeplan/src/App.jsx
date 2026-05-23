@@ -1242,7 +1242,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                       dependencyLaneCounts.set(part.id, lane + 1);
                       const anchors = resolveAnchors(dependencyId, part.id, part.dependencyAnchors?.[dependencyId]);
                       const geometry = getEdgeGeometry(source, target, 'dependency', lane, anchors);
-                      const labelText = part.dependencyLabels?.[dependencyId]?.trim() || 'Dependency';
 
                       return (
                         <g key={`${part.id}-${dependencyId}`}>
@@ -1252,15 +1251,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                             onMouseEnter={() => setHoveredLink({ kind: 'dependency', targetId: part.id, sourceId: dependencyId })}
                             onMouseLeave={() => setHoveredLink((current) => (current?.kind === 'dependency' && current?.targetId === part.id && current?.sourceId === dependencyId ? null : current))}
                           />
-                          <g
-                            className="edge-label"
-                            transform={`translate(${geometry.label.x}, ${geometry.label.y})`}
-                            onMouseEnter={() => setHoveredLink({ kind: 'dependency', targetId: part.id, sourceId: dependencyId })}
-                            onMouseLeave={() => setHoveredLink((current) => (current?.kind === 'dependency' && current?.targetId === part.id && current?.sourceId === dependencyId ? null : current))}
-                          >
-                            <rect x="-58" y="-10" width="116" height="20" rx="9" ry="9" />
-                            <text x="0" y="0">{labelText}</text>
-                          </g>
                         </g>
                       );
                     }),
