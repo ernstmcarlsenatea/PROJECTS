@@ -1172,8 +1172,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </select>
               </label>
               <span className="pill">{connectionInstruction}</span>
-              <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
-              <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
               {state.connectingFromId ? (
                 <button type="button" className="secondary-button" onClick={cancelConnection}>
                   Cancel link
@@ -1183,7 +1181,9 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <span className="edge-legend-item edge-legend-source">Source link</span>
                 <span className="edge-legend-item edge-legend-dependency">Dependency</span>
               </div>
-              <label style={{ marginLeft: 'auto' }}>
+              <button type="button" className="secondary-button" style={{ marginLeft: 'auto' }} onClick={exportPNG}>Export PNG</button>
+              <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+              <label>
                 Export quality
                 <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
                   <option value="normal">Normal</option>
