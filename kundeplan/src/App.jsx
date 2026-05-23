@@ -951,6 +951,51 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     }
   }
 
+  async function recoverLatestLocalBackupToCloud() {
+    if (!cloudStore.enabled) {
+      setCloudActionStatus('unavailable');
+      return;
+    }
+
+    const versions = loadVersions();
+    const backup = versions.at(-1);
+    if (!backup || !Array.isArray(backup.parts)) {
+      setCloudActionStatus('no-backup');
+      return;
+    }
+
+    if (!window.confirm('Recover the latest local version backup and upload it to Firebase cloud for this account?')) {
+      return;
+    }
+
+    setCloudActionStatus('migrating');
+
+    try {
+      const restoredState = normalizePersistedState({
+        parts: backup.parts,
+        selectedId: backup.selectedId,
+      });
+
+      setState(restoredState);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(restoredState));
+
+      const currentVersionCount = loadVersionCount();
+      await cloudStore.saveSnapshot({
+        state: restoredState,
+        versions,
+        versionCount: currentVersionCount,
+        migratedFromLocal: true,
+        recoveredFromLocalVersion: true,
+      });
+
+      localStorage.setItem(getCloudMigrationKey(cloudStore.userKey), 'true');
+      setCloudActionStatus('migrated');
+    } catch (error) {
+      console.error('Recover latest local backup failed:', error);
+      setCloudActionStatus('error');
+    }
+  }
+
   async function captureCanvas() {
     const el = graphCanvasRef.current;
     if (!el) return null;
@@ -1077,6 +1122,15 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             >
               {cloudActionStatus === 'restoring' ? 'Restoring…' : 'Restore cloud to local'}
             </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={recoverLatestLocalBackupToCloud}
+              disabled={!cloudStore.enabled || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
+              title={cloudStore.enabled ? 'Recover the latest local version backup and upload it to Firebase for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
+            >
+              Recover latest local backup
+            </button>
             <span className="pill cloud-user-pill">
               {cloudStore.enabled ? `Cloud user: ${cloudStore.userKey}` : 'Firebase not configured'}
             </span>
@@ -1089,6 +1143,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     empty: 'No cloud snapshot found',
                     error: 'Cloud action failed',
                     unavailable: 'Cloud unavailable',
+                    'no-backup': 'No local backup found',
                     migrating: 'Uploading…',
                     restoring: 'Downloading…',
                   }[cloudActionStatus]

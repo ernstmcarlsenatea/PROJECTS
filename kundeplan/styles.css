@@ -240,6 +240,10 @@ body::after {
   background: linear-gradient(180deg, #ffe6a1, #ffd16a);
 }
 
+.cloud-status-badge.is-no-backup {
+  background: linear-gradient(180deg, #ffe6a1, #ffd16a);
+}
+
 .secondary-button {
   background: linear-gradient(180deg, #ffffff, #fffbef);
   color: var(--ink);
