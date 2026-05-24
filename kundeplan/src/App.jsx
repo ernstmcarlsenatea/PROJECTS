@@ -185,6 +185,21 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [hoveredLink, setHoveredLink] = useState(null);
   const [newDependencyId, setNewDependencyId] = useState('');
   const [exportQuality, setExportQuality] = useState('normal');
+  const [showUserGuide, setShowUserGuide] = useState(false);
+
+  useEffect(() => {
+    if (!showUserGuide) {
+      return undefined;
+    }
+    function onGuideKey(event) {
+      if (event.key === 'Escape') {
+        setShowUserGuide(false);
+      }
+    }
+    window.addEventListener('keydown', onGuideKey);
+    return () => window.removeEventListener('keydown', onGuideKey);
+  }, [showUserGuide]);
+
   const [versionCount, setVersionCount] = useState(() => loadVersionCount());
   const initialLocalSnapshot = useMemo(
     () => createLocalSnapshot(loadState(), loadVersionCount()),
@@ -1104,6 +1119,16 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     <main className="app-shell">
       <div className="sky-blobs" aria-hidden="true" />
       <header className="hero">
+        <button
+          type="button"
+          className="hero-guide-button"
+          onClick={() => setShowUserGuide(true)}
+          title="Open the user guide"
+          aria-label="Open the user guide"
+        >
+          <span aria-hidden="true">?</span>
+          <span className="hero-guide-label">User guide</span>
+        </button>
         <div>
           <p className="eyebrow">ATEA AS customer plan atlas</p>
           <h1>Customer plan - source and relations</h1>
@@ -1780,6 +1805,162 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     empty: 'No cloud snapshot found',
                     error: 'Cloud action failed',
                     unavailable: 'Cloud unavailable',
+
+      {showUserGuide ? (
+        <div
+          className="user-guide-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="user-guide-title"
+          onClick={() => setShowUserGuide(false)}
+        >
+          <div
+            className="user-guide-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="user-guide-header">
+              <div>
+                <p className="panel-kicker">Help</p>
+                <h2 id="user-guide-title">Kundeplan user guide</h2>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setShowUserGuide(false)}
+                aria-label="Close the user guide"
+              >
+                Close
+              </button>
+            </header>
+
+            <div className="user-guide-body">
+              <section>
+                <h3>1. What this app does</h3>
+                <p>
+                  Kundeplan maps the parts of a customer plan — who owns each part, where it
+                  lives, where it is presented, and how the parts depend on each other. The map
+                  keeps a single source of truth so updates propagate cleanly between derived
+                  parts and their sources.
+                </p>
+              </section>
+
+              <section>
+                <h3>2. Top bar (hero) actions</h3>
+                <ul>
+                  <li><strong>User guide</strong> — opens this document.</li>
+                  <li><strong>Save version</strong> — stores a labelled snapshot of the current plan you can restore later.</li>
+                  <li><strong>Version badge (v…)</strong> — shows how many versions you have saved.</li>
+                  <li><strong>Sign in / Sign out</strong> — when SSO is enabled, the signed-in user appears here. "Public access" or "SSO not configured" badges describe the current mode.</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>3. Blueprint map (the graph)</h3>
+                <p>The Blueprint map shows every part as a card and every relation as a line.</p>
+                <h4>Toolbar</h4>
+                <ul>
+                  <li><strong>New part</strong> — creates a blank part and opens it in the Inspector.</li>
+                  <li><strong>Undo / Redo</strong> — step through your recent changes.</li>
+                  <li><strong>Connection mode</strong> — choose whether new links are <em>Dependency</em> links or <em>Source</em> links.</li>
+                  <li><strong>Cancel link</strong> — appears while you are drawing a link; click to abort.</li>
+                  <li><strong>Instruction pill</strong> — shows the next step for the current connection mode.</li>
+                  <li><strong>Edge legend</strong> — colour key for Source vs Dependency lines.</li>
+                  <li><strong>Export quality</strong> — Normal (fast) or High (sharper PNG/PDF capture).</li>
+                  <li><strong>Export PNG / Export PDF</strong> — saves the current map as an image or PDF.</li>
+                </ul>
+                <h4>Working with nodes</h4>
+                <ul>
+                  <li><strong>Click a node</strong> — selects it and loads it in the Inspector.</li>
+                  <li><strong>Drag a node</strong> — re-positions it on the canvas; positions are saved automatically.</li>
+                  <li><strong>Link handle (↘)</strong> — top-right of each node. Press it, then click another node to draw a link using the active Connection mode.</li>
+                  <li><strong>Edit handle (✎)</strong> — just below the link handle. Opens the part in the Inspector and scrolls the page down to it. After you click <strong>Save part</strong> the page scrolls back to the Blueprint map.</li>
+                </ul>
+                <h4>Reading the lines</h4>
+                <ul>
+                  <li><strong>Source link</strong> — this part inherits its values from its source. Changes to the source flow downstream.</li>
+                  <li><strong>Dependency</strong> — this part depends on another part but does not inherit from it.</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>4. Inspector (right panel)</h3>
+                <p>Use the Inspector to edit the selected part. Fields are:</p>
+                <ul>
+                  <li><strong>Name</strong> — required.</li>
+                  <li><strong>Owner</strong>, <strong>Resides in</strong>, <strong>Presented in</strong>, <strong>Notes</strong> — leave blank to inherit from the source.</li>
+                  <li><strong>Source</strong> — pick the part this one is derived from, or leave empty to mark it a root.</li>
+                  <li><strong>Dependencies</strong> — add or remove links to other parts. You can label each dependency.</li>
+                  <li><strong>Anchors</strong> — choose which side of each box the link enters and leaves.</li>
+                </ul>
+                <p>Buttons:</p>
+                <ul>
+                  <li><strong>Save part</strong> — writes your edits to the plan and scrolls back to the Blueprint map.</li>
+                  <li><strong>Delete</strong> — removes the part; descendants are re-attached to its source where possible.</li>
+                </ul>
+                <p>The lower detail view summarises the part's resolved values, source chain, and dependencies for quick reference.</p>
+              </section>
+
+              <section>
+                <h3>5. Catalog (parts grouped by residence)</h3>
+                <p>
+                  A compact, scannable list of every part, grouped by where it resides. Click any
+                  entry to load it in the Inspector. The catalog header also offers Export quality
+                  and PNG/PDF exports for the current view.
+                </p>
+              </section>
+
+              <section>
+                <h3>6. Plan summary</h3>
+                <p>The stats row beneath the catalog shows the totals (parts, sources, dependencies, etc.) for the current plan.</p>
+              </section>
+
+              <section>
+                <h3>7. Cloud sync (Firebase)</h3>
+                <p>
+                  Available to authorised users. Sync your local browser data with Firebase so the
+                  same plan is accessible across devices. All three actions are protected by a
+                  password prompt the first time you use them in a browser.
+                </p>
+                <ul>
+                  <li><strong>Migrate local to cloud</strong> — uploads this browser's data, overwriting the cloud snapshot for your account.</li>
+                  <li><strong>Restore cloud to local</strong> — downloads the latest cloud snapshot and replaces your local data.</li>
+                  <li><strong>Recover latest local backup</strong> — uploads your most recent saved version to the cloud.</li>
+                  <li><strong>Cloud user pill</strong> — shows the account in use, or "Firebase not configured".</li>
+                  <li><strong>Status badge</strong> — confirms the result of the last action (uploaded, restored, empty, error, etc.).</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>8. Versions</h3>
+                <ul>
+                  <li>Use <strong>Save version</strong> in the hero to snapshot the current plan.</li>
+                  <li>The version counter increments with each save (e.g. v3).</li>
+                  <li>"Recover latest local backup" in Cloud sync uploads your most recent saved version to the cloud.</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>9. Tips</h3>
+                <ul>
+                  <li>Drag nodes to organise the map; layout positions are persisted.</li>
+                  <li>Use Source links sparingly — they create inheritance, so changes flow downstream.</li>
+                  <li>Use Dependency links to express "needs" relationships without inheritance.</li>
+                  <li>Export at High quality before sharing for printing or large screens.</li>
+                  <li>Save a version before making sweeping changes, so you can roll back.</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>10. Keyboard & accessibility</h3>
+                <ul>
+                  <li>The edit handle (✎) on each node responds to Enter and Space.</li>
+                  <li>Press <kbd>Esc</kbd> or click outside this dialog to close the guide.</li>
+                </ul>
+              </section>
+            </div>
+          </div>
+        </div>
+      ) : null}
                     'no-backup': 'No local backup found',
                     migrating: 'Uploading…',
                     restoring: 'Downloading…',
