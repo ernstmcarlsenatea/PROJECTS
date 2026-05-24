@@ -1638,13 +1638,13 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       </section>
 
       <section className="panel list-panel">
-        <div className="panel-header">
-          <div>
+        <div className="panel-header catalog-header">
+          <div className="catalog-header-intro">
             <p className="panel-kicker">Catalog</p>
             <h2>All parts grouped by residence</h2>
-          </div>
-          <div className="panel-tools">
             <p className="panel-note">This table gives the exact owner, presentation point, and dependency footprint for each part.</p>
+          </div>
+          <div className="panel-tools panel-tools-compact catalog-header-actions">
             <label>
               Export quality
               <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
@@ -1652,8 +1652,10 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <option value="high">High</option>
               </select>
             </label>
-            <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
-            <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+            <div className="panel-tools-group">
+              <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
+              <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+            </div>
           </div>
         </div>
         <div className="catalog">

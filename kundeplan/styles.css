@@ -797,6 +797,45 @@ button:focus-visible {
   border-width: 2px;
 }
 
+/* Catalog section header — golden-ratio two-column layout */
+.catalog-header {
+  display: grid;
+  grid-template-columns: 1.618fr 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.catalog-header-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.catalog-header-intro .panel-note {
+  margin: 0;
+  max-width: 62ch;
+  line-height: 1.45;
+}
+
+.catalog-header-actions {
+  width: auto;
+  justify-self: end;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 0.6rem 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .catalog-header {
+    grid-template-columns: 1fr;
+  }
+  .catalog-header-actions {
+    justify-self: start;
+    justify-content: flex-start;
+  }
+}
+
 .edge-legend {
   display: flex;
   flex-wrap: wrap;
