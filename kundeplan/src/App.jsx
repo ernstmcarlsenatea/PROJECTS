@@ -213,6 +213,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const graphCanvasRef = useRef(null);
   const inspectorRef = useRef(null);
   const boardRef = useRef(null);
+  const catalogRef = useRef(null);
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
   const displayParts = useMemo(() => {
@@ -1111,6 +1112,45 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     pdf.save('kundeplan.pdf');
   }
 
+  async function captureCatalog() {
+    const el = catalogRef.current;
+    if (!el) return null;
+    const captureScale = EXPORT_QUALITY_SCALE[exportQuality] ?? EXPORT_QUALITY_SCALE.normal;
+    return html2canvas(el, {
+      scale: captureScale,
+      useCORS: true,
+      backgroundColor: '#fffdf6',
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: el.scrollWidth,
+      windowHeight: el.scrollHeight,
+    });
+  }
+
+  async function exportCatalogPNG() {
+    const canvas = await captureCatalog();
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = 'kundeplan-catalog.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
+
+  async function exportCatalogPDF() {
+    const canvas = await captureCatalog();
+    if (!canvas) return;
+    const imgData = canvas.toDataURL('image/png');
+    const pdfWidth = canvas.width;
+    const pdfHeight = canvas.height;
+    const pdf = new jsPDF({
+      orientation: pdfWidth > pdfHeight ? 'landscape' : 'portrait',
+      unit: 'px',
+      format: [pdfWidth, pdfHeight],
+    });
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save('kundeplan-catalog.pdf');
+  }
+
   const connectionInstruction = state.connectingFromId
     ? `Click a target box to ${state.connectionMode === 'source' ? 'set a source link' : 'add a dependency'}.`
     : 'Click the link dot on a box, then click the target box.';
@@ -1715,12 +1755,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               </select>
             </label>
             <div className="panel-tools-group">
-              <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
-              <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+              <button type="button" className="secondary-button" onClick={exportCatalogPNG}>Export PNG</button>
+              <button type="button" className="secondary-button" onClick={exportCatalogPDF}>Export PDF</button>
             </div>
           </div>
         </div>
-        <div className="catalog">
+        <div className="catalog" ref={catalogRef}>
           {groupedParts.map(([residence, parts]) => (
             <section className="catalog-group" key={residence}>
               <h3>{residence}</h3>
