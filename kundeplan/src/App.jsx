@@ -2209,21 +2209,39 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <p>The Blueprint map shows every part as a card and every relation as a line.</p>
                 <h4>Toolbar</h4>
                 <ul>
-                  <li><strong>New part</strong> — creates a blank part and opens it in the Inspector.</li>
+                  <li><strong>New part</strong> — creates a blank draft and opens it in the Inspector. The new part is placed at the bottom of the canvas, left-aligned (so the canvas never grows wider). The canvas auto-scrolls to the new spot and the <em>Part name</em> field is focused with a <em>"Start here :-)"</em> bubble.</li>
                   <li><strong>Undo / Redo</strong> — step through your recent changes.</li>
-                  <li><strong>Connection mode</strong> — choose whether new links are <em>Dependency</em> links or <em>Source</em> links.</li>
+                  <li><strong>Connection mode</strong> — global default for new links (<em>Dependency</em> or <em>Source</em>). Per-node popouts override this per click.</li>
                   <li><strong>Cancel link</strong> — appears while you are drawing a link; click to abort.</li>
                   <li><strong>Instruction pill</strong> — shows the next step for the current connection mode.</li>
                   <li><strong>Edge legend</strong> — colour key for Source vs Dependency lines.</li>
                   <li><strong>Export quality</strong> — Normal (fast) or High (sharper PNG/PDF capture).</li>
-                  <li><strong>Export PNG / Export PDF</strong> — saves the current map as an image or PDF.</li>
+                  <li><strong>Export PNG / Export PDF</strong> — saves the Blueprint map as an image or PDF. The Catalog panel has its own separate PNG/PDF export.</li>
                 </ul>
                 <h4>Working with nodes</h4>
                 <ul>
                   <li><strong>Click a node</strong> — selects it and loads it in the Inspector.</li>
                   <li><strong>Drag a node</strong> — re-positions it on the canvas; positions are saved automatically.</li>
-                  <li><strong>Link handle (↘)</strong> — top-right of each node. Press it, then click another node to draw a link using the active Connection mode.</li>
-                  <li><strong>Edit handle (✎)</strong> — just below the link handle. Opens the part in the Inspector and scrolls the page down to it. After you click <strong>Save part</strong> the page scrolls back to the Blueprint map.</li>
+                  <li><strong>Link handle (↘) — Connections popout</strong> — top-right of each node. Hover (or click) the icon to open a popout with two pill buttons:
+                    <ul>
+                      <li><strong>Connect SOURCE</strong> — sets connection mode to <em>source</em> and starts a link from this part. Click another node to complete the source link.</li>
+                      <li><strong>Connect DEPENDENCY</strong> — sets connection mode to <em>dependency</em> and starts a link from this part. Click another node to complete the dependency.</li>
+                    </ul>
+                    The popout closes when you click an option, click the small <strong>×</strong>, press <kbd>Esc</kbd>, click outside, or move your mouse away.
+                  </li>
+                  <li><strong>Edit handle (✎) — Part actions popout</strong> — just below the link handle. Hover or click to open a second popout with three pill buttons:
+                    <ul>
+                      <li><strong>EDIT in inspector</strong> — opens this part in the Inspector and smooth-scrolls the page down to it. The <strong>Part name</strong> field is auto-focused and pulses with a <em>"Start here :-)"</em> bubble for a couple of seconds.</li>
+                      <li><strong>NEW part from here</strong> — opens a blank draft with this part pre-set as its source. The new part is placed at the bottom of the canvas (left-aligned), the canvas auto-scrolls to it, and the Inspector is focused with the <em>Start here</em> hint.</li>
+                      <li><strong>DELETE part</strong> — asks for confirmation, then removes the part; descendants are re-attached to its source where possible.</li>
+                    </ul>
+                  </li>
+                </ul>
+                <h4>Visual feedback</h4>
+                <ul>
+                  <li><strong>"Start here :-)" bubble</strong> — appears above the <em>Part name</em> field whenever the Inspector is opened from a New/Edit action, telling you exactly where to begin typing.</li>
+                  <li><strong>"Saved ✓" bubble</strong> — after pressing <strong>Save part</strong>, the canvas scrolls to centre the saved node and a green pulse + <em>Saved ✓</em> bubble appears above it for a couple of seconds.</li>
+                  <li><strong>Auto-scroll</strong> — actions that open the Inspector smooth-scroll the page down to it; saving a part smooth-scrolls back up to the saved node in the Blueprint map.</li>
                 </ul>
                 <h4>Reading the lines</h4>
                 <ul>
@@ -2242,10 +2260,11 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   <li><strong>Dependencies</strong> — add or remove links to other parts. You can label each dependency.</li>
                   <li><strong>Anchors</strong> — choose which side of each box the link enters and leaves.</li>
                 </ul>
-                <p>Buttons:</p>
+                <p>Buttons (directly under the Notes field):</p>
                 <ul>
-                  <li><strong>Save part</strong> — writes your edits to the plan and scrolls back to the Blueprint map.</li>
-                  <li><strong>Delete</strong> — removes the part; descendants are re-attached to its source where possible.</li>
+                  <li><strong>Save part</strong> — writes your edits to the plan, smooth-scrolls back to the Blueprint map, centres the saved node in view and flashes the <em>Saved ✓</em> bubble.</li>
+                  <li><strong>Delete part</strong> — removes the current part; descendants are re-attached to its source where possible.</li>
+                  <li><strong>Clear source</strong> — detaches this part from its current source without deleting it.</li>
                 </ul>
                 <p>The lower detail view summarises the part's resolved values, source chain, and dependencies for quick reference.</p>
               </section>
@@ -2254,8 +2273,10 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <h3>5. Catalog (parts grouped by residence)</h3>
                 <p>
                   A compact, scannable list of every part, grouped by where it resides. Click any
-                  entry to load it in the Inspector. The catalog header also offers Export quality
-                  and PNG/PDF exports for the current view.
+                  entry to load it in the Inspector. The catalog header uses a golden-ratio split
+                  and has its own <strong>Export quality</strong> selector plus dedicated
+                  <strong>Export PNG</strong> / <strong>Export PDF</strong> buttons that capture
+                  only the catalog view (independent from the Blueprint map exports).
                 </p>
               </section>
 
@@ -2267,9 +2288,10 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               <section>
                 <h3>7. Cloud sync (Firebase)</h3>
                 <p>
-                  Available to authorised users. Sync your local browser data with Firebase so the
-                  same plan is accessible across devices. All three actions are protected by a
-                  password prompt the first time you use them in a browser.
+                  Available to authorised users only. Sync your local browser data with Firebase
+                  so the same plan is accessible across devices. All three actions are protected
+                  by a password prompt the first time you use them in a browser (the answer is
+                  remembered per browser).
                 </p>
                 <ul>
                   <li><strong>Migrate local to cloud</strong> — uploads this browser's data, overwriting the cloud snapshot for your account.</li>
@@ -2303,8 +2325,9 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               <section>
                 <h3>10. Keyboard & accessibility</h3>
                 <ul>
-                  <li>The edit handle (✎) on each node responds to Enter and Space.</li>
-                  <li>Press <kbd>Esc</kbd> or click outside this dialog to close the guide.</li>
+                  <li>Both per-node popouts (Connections ↘ and Part actions ✎) respond to keyboard focus. Use <kbd>Tab</kbd> to focus the icon, then <kbd>Enter</kbd> or <kbd>Space</kbd> on each menu item.</li>
+                  <li>Press <kbd>Esc</kbd> to close any open popout or the user guide.</li>
+                  <li>Click outside a popout (or move the mouse away) to close it.</li>
                 </ul>
               </section>
             </div>
