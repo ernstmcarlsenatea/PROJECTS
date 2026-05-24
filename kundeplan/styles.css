@@ -1104,9 +1104,9 @@ button:focus-visible {
   font-size: 0.9rem;
   box-shadow: 0 4px 0 rgba(36, 48, 70, 0.12);
   white-space: nowrap;
-  max-width: 18ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .auth-disabled-badge {
