@@ -215,6 +215,8 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const inspectorRef = useRef(null);
   const boardRef = useRef(null);
   const catalogRef = useRef(null);
+  const partNameInputRef = useRef(null);
+  const [startHereHint, setStartHereHint] = useState(false);
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
   const displayParts = useMemo(() => {
@@ -507,6 +509,15 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     requestAnimationFrame(() => {
       scrollCanvasToPosition(position);
       inspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.setTimeout(() => {
+        const input = partNameInputRef.current;
+        if (input) {
+          input.focus();
+          try { input.select(); } catch { /* ignore */ }
+        }
+        setStartHereHint(true);
+        window.setTimeout(() => setStartHereHint(false), 2400);
+      }, 350);
     });
   }
 
@@ -1561,9 +1572,19 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
           <form className="part-form" onSubmit={savePart}>
             <div className="form-row">
-              <label>
+              <label className={`part-name-label${startHereHint ? ' start-here-active' : ''}`}>
                 Part name
-                <input name="name" type="text" value={draft?.name ?? ''} onChange={(event) => updateDraft('name', event.target.value)} placeholder="Customer plan epic" required />
+                {startHereHint && <span className="start-here-bubble" aria-hidden="true">Start here :-)</span>}
+                <input
+                  ref={partNameInputRef}
+                  name="name"
+                  type="text"
+                  value={draft?.name ?? ''}
+                  onChange={(event) => updateDraft('name', event.target.value)}
+                  placeholder="Customer plan epic"
+                  className={startHereHint ? 'start-here-pulse' : ''}
+                  required
+                />
               </label>
               <label>
                 Owner
