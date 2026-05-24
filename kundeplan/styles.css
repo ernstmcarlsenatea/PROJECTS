@@ -686,10 +686,17 @@ body::after {
   display: none;
 }
 
-.graph-handle {
+.graph-handle-wrap {
   position: absolute;
   right: 0.55rem;
   top: 0.55rem;
+  width: 1.8rem;
+  height: 1.8rem;
+  z-index: 3;
+}
+
+.graph-handle {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -701,6 +708,62 @@ body::after {
   box-shadow: 0 4px 0 rgba(36, 48, 70, 0.12);
   font-weight: 900;
   cursor: crosshair;
+}
+
+.graph-handle-menu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  display: none;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.45rem;
+  background: var(--surface-strong, #fffdf6);
+  border: 3px solid var(--outline, #243046);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 8px 0 rgba(36, 48, 70, 0.18);
+  width: max-content;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.graph-handle-wrap:hover .graph-handle-menu,
+.graph-handle-wrap:focus-within .graph-handle-menu {
+  display: flex;
+}
+
+.graph-handle-menu-item {
+  appearance: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #243046;
+  padding: 0.35rem 0.7rem;
+  border: 2px solid var(--outline, #243046);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 0 rgba(36, 48, 70, 0.14);
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.graph-handle-menu-item strong {
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.graph-handle-menu-item.is-source {
+  background: linear-gradient(180deg, #ffe1a8, #ffc46b);
+}
+
+.graph-handle-menu-item.is-dependency {
+  background: linear-gradient(180deg, #c8e7ff, #8fcaff);
+}
+
+.graph-handle-menu-item:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
 }
 
 .graph-edit-handle {

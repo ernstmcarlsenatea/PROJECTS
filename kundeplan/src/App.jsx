@@ -1531,13 +1531,41 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                       }
                     }}
                   >
-                    <span
-                      className="graph-handle"
-                      onPointerDown={(event) => beginConnection(part.id, event)}
-                      onClick={(event) => event.stopPropagation()}
-                      title={`Start ${state.connectionMode === 'source' ? 'source' : 'dependency'} connection`}
-                    >
-                      ↘
+                    <span className="graph-handle-wrap">
+                      <span
+                        className="graph-handle"
+                        onPointerDown={(event) => beginConnection(part.id, event)}
+                        onClick={(event) => event.stopPropagation()}
+                        title="Hover to choose connection type"
+                      >
+                        ↘
+                      </span>
+                      <span className="graph-handle-menu" role="menu" aria-label="Choose connection type">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="graph-handle-menu-item is-source"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setState((current) => ({ ...current, connectionMode: 'source', connectingFromId: part.id, pendingConnection: null }));
+                            connectionStartRef.current = part.id;
+                          }}
+                        >
+                          Connect <strong>SOURCE</strong>
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="graph-handle-menu-item is-dependency"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setState((current) => ({ ...current, connectionMode: 'dependency', connectingFromId: part.id, pendingConnection: null }));
+                            connectionStartRef.current = part.id;
+                          }}
+                        >
+                          Connect <strong>DEPENDENCY</strong>
+                        </button>
+                      </span>
                     </span>
                     <span
                       className="graph-edit-handle"
