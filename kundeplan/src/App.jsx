@@ -1065,8 +1065,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           </p>
         </div>
         <div className="hero-actions">
-          <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
-          <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
           <button type="button" className="version-save-button" onClick={saveVersion}>Save version</button>
           {versionCount > 0 ? (
             <span className="version-badge">v{versionLabel(versionCount)}</span>
@@ -1093,63 +1091,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         </div>
       </header>
 
-      {activeAccount?.username?.toLowerCase() === 'ernst.magne.carlsen@atea.no' ? (
-      <section className="panel cloud-panel">
-        <div className="panel-header cloud-panel-header">
-          <div>
-            <p className="panel-kicker">Cloud sync</p>
-          </div>
-          <div className="cloud-actions">
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={migrateLocalDataToCloud}
-              disabled={!cloudStore.enabled || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
-              title={cloudStore.enabled ? 'Upload current local browser data to Firebase for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
-            >
-              {cloudActionStatus === 'migrating' ? 'Migrating…' : 'Migrate local to cloud'}
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={restoreCloudDataToLocal}
-              disabled={!cloudStore.enabled || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
-              title={cloudStore.enabled ? 'Replace local browser data with the latest Firebase snapshot for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
-            >
-              {cloudActionStatus === 'restoring' ? 'Restoring…' : 'Restore cloud to local'}
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={recoverLatestLocalBackupToCloud}
-              disabled={!cloudStore.enabled || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
-              title={cloudStore.enabled ? 'Recover the latest local version backup and upload it to Firebase for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
-            >
-              Recover latest local backup
-            </button>
-            <span className="pill cloud-user-pill">
-              {cloudStore.enabled ? `Cloud user: ${cloudStore.userKey}` : 'Firebase not configured'}
-            </span>
-            {cloudActionStatus !== 'idle' ? (
-              <span className={`cloud-status-badge is-${cloudActionStatus}`}>
-                {
-                  {
-                    migrated: 'Cloud updated',
-                    restored: 'Local data restored',
-                    empty: 'No cloud snapshot found',
-                    error: 'Cloud action failed',
-                    unavailable: 'Cloud unavailable',
-                    'no-backup': 'No local backup found',
-                    migrating: 'Uploading…',
-                    restoring: 'Downloading…',
-                  }[cloudActionStatus]
-                }
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </section>
-      ) : null}
+      {activeAccount?.username?.toLowerCase() === 'ernst.magne.carlsen@atea.no' ? null : null}
 
       <section className="workspace-grid">
         <section className="panel board-panel">
@@ -1158,34 +1100,42 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               <p className="panel-kicker">Blueprint map</p>
               <h2>Parts and dependencies</h2>
             </div>
-            <div className="panel-tools">
-              <button type="button" className="primary-button" onClick={openNewPart}>New part</button>
-              <label>
-                Connection mode
-                <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)}>
-                  <option value="dependency">Dependency</option>
-                  <option value="source">Source</option>
-                </select>
-              </label>
-              <span className="pill">{connectionInstruction}</span>
-              {state.connectingFromId ? (
-                <button type="button" className="secondary-button" onClick={cancelConnection}>
-                  Cancel link
-                </button>
-              ) : null}
-              <div className="edge-legend" aria-label="Connection types">
-                <span className="edge-legend-item edge-legend-source">Source link</span>
-                <span className="edge-legend-item edge-legend-dependency">Dependency</span>
+            <div className="panel-tools panel-tools-compact">
+              <div className="panel-tools-group">
+                <button type="button" className="primary-button" onClick={openNewPart}>New part</button>
+                <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
+                <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
               </div>
-              <label style={{ marginLeft: 'auto' }}>
-                Export quality
-                <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                </select>
-              </label>
-              <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
-              <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+              <div className="panel-tools-group">
+                <label>
+                  Connection mode
+                  <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)}>
+                    <option value="dependency">Dependency</option>
+                    <option value="source">Source</option>
+                  </select>
+                </label>
+                {state.connectingFromId ? (
+                  <button type="button" className="secondary-button" onClick={cancelConnection}>
+                    Cancel link
+                  </button>
+                ) : null}
+                <span className="pill">{connectionInstruction}</span>
+                <div className="edge-legend" aria-label="Connection types">
+                  <span className="edge-legend-item edge-legend-source">Source link</span>
+                  <span className="edge-legend-item edge-legend-dependency">Dependency</span>
+                </div>
+              </div>
+              <div className="panel-tools-group panel-tools-end">
+                <label>
+                  Export quality
+                  <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+                <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
+                <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+              </div>
             </div>
           </div>
 
@@ -1711,6 +1661,68 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           </article>
         ))}
       </section>
+
+      {activeAccount?.username?.toLowerCase() === 'ernst.magne.carlsen@atea.no' ? (
+      <section className="panel cloud-panel">
+        <div className="panel-header cloud-panel-header">
+          <div>
+            <p className="panel-kicker">Cloud sync</p>
+            <h2>Firebase backup and restore</h2>
+            <p className="panel-note">
+              Push this browser&apos;s local data to Firebase, or restore the latest Firebase snapshot back into this device.
+            </p>
+          </div>
+          <div className="cloud-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={migrateLocalDataToCloud}
+              disabled={!cloudStore.enabled || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
+              title={cloudStore.enabled ? 'Upload current local browser data to Firebase for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
+            >
+              {cloudActionStatus === 'migrating' ? 'Migrating…' : 'Migrate local to cloud'}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={restoreCloudDataToLocal}
+              disabled={!cloudStore.enabled || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
+              title={cloudStore.enabled ? 'Replace local browser data with the latest Firebase snapshot for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
+            >
+              {cloudActionStatus === 'restoring' ? 'Restoring…' : 'Restore cloud to local'}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={recoverLatestLocalBackupToCloud}
+              disabled={!cloudStore.enabled || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
+              title={cloudStore.enabled ? 'Recover the latest local version backup and upload it to Firebase for this account.' : 'Firebase cloud sync is unavailable until Firebase environment variables are configured.'}
+            >
+              Recover latest local backup
+            </button>
+            <span className="pill cloud-user-pill">
+              {cloudStore.enabled ? `Cloud user: ${cloudStore.userKey}` : 'Firebase not configured'}
+            </span>
+            {cloudActionStatus !== 'idle' ? (
+              <span className={`cloud-status-badge is-${cloudActionStatus}`}>
+                {
+                  {
+                    migrated: 'Cloud updated',
+                    restored: 'Local data restored',
+                    empty: 'No cloud snapshot found',
+                    error: 'Cloud action failed',
+                    unavailable: 'Cloud unavailable',
+                    'no-backup': 'No local backup found',
+                    migrating: 'Uploading…',
+                    restoring: 'Downloading…',
+                  }[cloudActionStatus]
+                }
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </section>
+      ) : null}
     </main>
   );
 }
