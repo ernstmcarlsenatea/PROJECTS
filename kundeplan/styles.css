@@ -779,6 +779,15 @@ body::after {
   background: linear-gradient(180deg, #c8e7ff, #8fcaff);
 }
 
+.graph-handle-menu-item.is-new {
+  background: linear-gradient(180deg, #d6f5c8, #9fde7c);
+}
+
+.graph-handle-menu-item.is-delete {
+  background: linear-gradient(180deg, #ffd0c8, #ff8f7a);
+  color: #4a1010;
+}
+
 .graph-handle-menu-item:hover {
   transform: translateY(-1px);
   filter: brightness(1.05);

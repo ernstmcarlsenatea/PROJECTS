@@ -524,7 +524,11 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function openNewPart() {
-    const anchor = state.parts.find((part) => part.id === state.selectedId) ?? null;
+    openNewPartFrom(state.selectedId);
+  }
+
+  function openNewPartFrom(anchorId) {
+    const anchor = state.parts.find((part) => part.id === anchorId) ?? null;
     const draftPart = createEmptyDraft();
     draftPart.sourceId = anchor?.id ?? null;
     const position = findFreeNodePosition();
@@ -832,8 +836,13 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       return;
     }
 
-    const removedId = draft.id;
-    const removedSourceId = draft.sourceId ?? null;
+    deletePartById(draft.id);
+  }
+
+  function deletePartById(removedId) {
+    const target = state.parts.find((part) => part.id === removedId);
+    if (!target) return;
+    const removedSourceId = target.sourceId ?? null;
     const parts = state.parts
       .filter((part) => part.id !== removedId)
       .map((part) => ({
@@ -1613,6 +1622,50 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                           }}
                         >
                           Connect <strong>DEPENDENCY</strong>
+                        </span>
+                        <span
+                          role="menuitem"
+                          tabIndex={0}
+                          className="graph-handle-menu-item is-new"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenHandleMenuId(null);
+                            openNewPartFrom(part.id);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setOpenHandleMenuId(null);
+                              openNewPartFrom(part.id);
+                            }
+                          }}
+                        >
+                          <strong>NEW</strong> part from here
+                        </span>
+                        <span
+                          role="menuitem"
+                          tabIndex={0}
+                          className="graph-handle-menu-item is-delete"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenHandleMenuId(null);
+                            if (window.confirm(`Delete ${part.name}? Related parts will be reattached to its source if possible.`)) {
+                              deletePartById(part.id);
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setOpenHandleMenuId(null);
+                              if (window.confirm(`Delete ${part.name}? Related parts will be reattached to its source if possible.`)) {
+                                deletePartById(part.id);
+                              }
+                            }
+                          }}
+                        >
+                          <strong>DELETE</strong> part
                         </span>
                         <span
                           role="button"
