@@ -937,13 +937,8 @@ button:focus-visible {
   border-width: 2px;
 }
 
-.connection-instruction-row {
-  display: flex;
-  justify-content: flex-end;
-  margin: 0.35rem 0 0.5rem;
-}
-
-.connection-instruction-row .pill {
+.connection-instruction-pill {
+  margin-left: 0.25rem;
   font-size: 0.78rem;
 }
 

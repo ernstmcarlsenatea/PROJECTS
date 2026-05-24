@@ -1205,10 +1205,8 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </label>
                 <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
                 <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+                <span className="pill connection-instruction-pill">{connectionInstruction}</span>
               </div>
-            </div>
-            <div className="connection-instruction-row">
-              <span className="pill">{connectionInstruction}</span>
             </div>
           </div>
 
