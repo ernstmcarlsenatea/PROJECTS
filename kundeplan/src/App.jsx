@@ -777,8 +777,14 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     commit({ parts, selectedId: targetId, draft: clonePart(nextPart), connectingFromId: null, pendingConnection: null });
 
     requestAnimationFrame(() => {
-      boardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      scrollCanvasToPosition(nextPart.position);
+      const nodeEl = graphCanvasRef.current?.querySelector(`[data-part-id="${targetId}"]`)
+        ?? document.querySelector(`[data-part-id="${targetId}"]`);
+      if (nodeEl && typeof nodeEl.scrollIntoView === 'function') {
+        nodeEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      } else {
+        boardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        scrollCanvasToPosition(nextPart.position);
+      }
       setJustSavedId(targetId);
       window.setTimeout(() => {
         setJustSavedId((current) => (current === targetId ? null : current));
