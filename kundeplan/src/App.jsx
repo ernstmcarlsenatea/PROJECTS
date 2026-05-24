@@ -1171,41 +1171,45 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               <p className="panel-kicker">Blueprint map</p>
               <h2>Parts and dependencies</h2>
             </div>
-            <div className="panel-tools panel-tools-compact">
-              <div className="panel-tools-group">
-                <button type="button" className="primary-button" onClick={openNewPart}>New part</button>
-                <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
-                <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
-              </div>
-              <div className="panel-tools-group">
-                <label>
-                  Connection mode
-                  <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)}>
-                    <option value="dependency">Dependency</option>
-                    <option value="source">Source</option>
-                  </select>
-                </label>
-                {state.connectingFromId ? (
-                  <button type="button" className="secondary-button" onClick={cancelConnection}>
-                    Cancel link
-                  </button>
-                ) : null}
-                <div className="edge-legend" aria-label="Connection types">
-                  <span className="edge-legend-item edge-legend-source">Source link</span>
-                  <span className="edge-legend-item edge-legend-dependency">Dependency</span>
+            <div className="panel-tools panel-tools-compact panel-tools-stacked">
+              <div className="panel-tools-row">
+                <div className="panel-tools-group">
+                  <button type="button" className="primary-button" onClick={openNewPart}>New part</button>
+                  <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
+                  <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
                 </div>
-              </div>
-              <div className="panel-tools-group panel-tools-end">
-                <label>
-                  Export quality
-                  <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
-                    <option value="normal">Normal</option>
-                    <option value="high">High</option>
-                  </select>
-                </label>
-                <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
-                <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+                <div className="panel-tools-group">
+                  <label>
+                    Connection mode
+                    <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)}>
+                      <option value="dependency">Dependency</option>
+                      <option value="source">Source</option>
+                    </select>
+                  </label>
+                  {state.connectingFromId ? (
+                    <button type="button" className="secondary-button" onClick={cancelConnection}>
+                      Cancel link
+                    </button>
+                  ) : null}
+                  <div className="edge-legend" aria-label="Connection types">
+                    <span className="edge-legend-item edge-legend-source">Source link</span>
+                    <span className="edge-legend-item edge-legend-dependency">Dependency</span>
+                  </div>
+                </div>
                 <span className="pill connection-instruction-pill">{connectionInstruction}</span>
+              </div>
+              <div className="panel-tools-row panel-tools-row-export">
+                <div className="panel-tools-group">
+                  <label>
+                    Export quality
+                    <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
+                      <option value="normal">Normal</option>
+                      <option value="high">High</option>
+                    </select>
+                  </label>
+                  <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
+                  <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+                </div>
               </div>
             </div>
           </div>

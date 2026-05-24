@@ -938,8 +938,27 @@ button:focus-visible {
 }
 
 .connection-instruction-pill {
-  margin-left: 0.25rem;
+  margin-left: auto;
   font-size: 0.78rem;
+}
+
+.panel-tools-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  gap: 0.5rem;
+}
+
+.panel-tools-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+}
+
+.panel-tools-row-export {
+  justify-content: flex-end;
 }
 
 /* Catalog section header — golden-ratio two-column layout */
