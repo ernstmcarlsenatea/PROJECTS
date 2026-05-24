@@ -211,6 +211,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const dragRef = useRef(null);
   const suppressClickRef = useRef(null);
   const graphCanvasRef = useRef(null);
+  const graphStageRef = useRef(null);
   const inspectorRef = useRef(null);
   const boardRef = useRef(null);
   const catalogRef = useRef(null);
@@ -469,37 +470,66 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     const stepY = NODE_HEIGHT + padding;
     const startX = 140;
     const startY = 140;
-    const taken = state.parts
+
+    const positions = state.parts
       .map((part) => part.position)
       .filter((position) => position && Number.isFinite(position.x) && Number.isFinite(position.y));
 
-    function overlaps(candidate) {
-      return taken.some((position) => {
-        return (
-          Math.abs(position.x - candidate.x) < stepX &&
-          Math.abs(position.y - candidate.y) < stepY
-        );
-      });
+    if (positions.length === 0) {
+      return { x: startX, y: startY };
     }
 
+    // Place below the lowest existing node, left-aligned at startX, never extending
+    // the canvas to the right past the existing right-most node.
+    const maxBottom = positions.reduce(
+      (acc, position) => Math.max(acc, position.y + NODE_HEIGHT),
+      0,
+    );
+    const maxRight = positions.reduce(
+      (acc, position) => Math.max(acc, position.x + NODE_WIDTH),
+      startX + NODE_WIDTH,
+    );
+
+    function overlaps(candidate) {
+      return positions.some((position) => (
+        Math.abs(position.x - candidate.x) < stepX &&
+        Math.abs(position.y - candidate.y) < stepY
+      ));
+    }
+
+    let y = maxBottom + padding;
     for (let row = 0; row < 40; row += 1) {
-      for (let col = 0; col < 40; col += 1) {
-        const candidate = { x: startX + col * stepX, y: startY + row * stepY };
+      for (let x = startX; x + NODE_WIDTH <= maxRight; x += stepX) {
+        const candidate = { x, y };
         if (!overlaps(candidate)) {
           return candidate;
         }
       }
+      y += stepY;
     }
-    return { x: startX, y: startY };
+    return { x: startX, y: maxBottom + padding };
+  }
+
+  function scrollCanvasToPosition(position) {
+    const stage = graphStageRef.current;
+    if (!stage || !position) {
+      return;
+    }
+    const margin = 40;
+    const targetLeft = Math.max(0, position.x - margin);
+    const targetTop = Math.max(0, position.y - margin);
+    stage.scrollTo({ left: targetLeft, top: targetTop, behavior: 'smooth' });
   }
 
   function openNewPart() {
     const anchor = state.parts.find((part) => part.id === state.selectedId) ?? null;
     const draftPart = createEmptyDraft();
     draftPart.sourceId = anchor?.id ?? null;
-    draftPart.position = findFreeNodePosition();
+    const position = findFreeNodePosition();
+    draftPart.position = position;
     setState((current) => ({ ...current, selectedId: null, draft: draftPart, connectingFromId: null, pendingConnection: null }));
     requestAnimationFrame(() => {
+      scrollCanvasToPosition(position);
       inspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
@@ -1288,7 +1318,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             </div>
           </div>
 
-          <div className="graph-stage" aria-live="polite" onClick={state.connectingFromId ? cancelConnection : undefined}>
+          <div className="graph-stage" ref={graphStageRef} aria-live="polite" onClick={state.connectingFromId ? cancelConnection : undefined}>
             <div
               ref={graphCanvasRef}
             className="graph-canvas"
