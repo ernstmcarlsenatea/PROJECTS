@@ -902,7 +902,36 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setVersionCount(nextCount);
   }
 
+  function ensureCloudPassword() {
+    const STORAGE_FLAG = 'kundeplan-cloud-password-ok';
+    const REQUIRED = 'TP2B';
+    try {
+      if (localStorage.getItem(STORAGE_FLAG) === '1') {
+        return true;
+      }
+    } catch {
+      // ignore storage access errors
+    }
+    const entered = window.prompt('Enter cloud sync password:');
+    if (entered === null) {
+      return false;
+    }
+    if (entered !== REQUIRED) {
+      window.alert('Incorrect password.');
+      return false;
+    }
+    try {
+      localStorage.setItem(STORAGE_FLAG, '1');
+    } catch {
+      // ignore storage access errors
+    }
+    return true;
+  }
+
   async function migrateLocalDataToCloud() {
+    if (!ensureCloudPassword()) {
+      return;
+    }
     if (!cloudStore.enabled) {
       setCloudActionStatus('unavailable');
       return;
@@ -930,6 +959,9 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   async function restoreCloudDataToLocal() {
+    if (!ensureCloudPassword()) {
+      return;
+    }
     if (!cloudStore.enabled) {
       setCloudActionStatus('unavailable');
       return;
@@ -952,6 +984,9 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   async function recoverLatestLocalBackupToCloud() {
+    if (!ensureCloudPassword()) {
+      return;
+    }
     if (!cloudStore.enabled) {
       setCloudActionStatus('unavailable');
       return;
