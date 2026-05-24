@@ -937,6 +937,16 @@ button:focus-visible {
   border-width: 2px;
 }
 
+.connection-instruction-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.35rem 0 0.5rem;
+}
+
+.connection-instruction-row .pill {
+  font-size: 0.78rem;
+}
+
 /* Catalog section header — golden-ratio two-column layout */
 .catalog-header {
   display: grid;

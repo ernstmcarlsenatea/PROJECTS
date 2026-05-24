@@ -1190,7 +1190,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     Cancel link
                   </button>
                 ) : null}
-                <span className="pill">{connectionInstruction}</span>
                 <div className="edge-legend" aria-label="Connection types">
                   <span className="edge-legend-item edge-legend-source">Source link</span>
                   <span className="edge-legend-item edge-legend-dependency">Dependency</span>
@@ -1207,6 +1206,9 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
                 <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
               </div>
+            </div>
+            <div className="connection-instruction-row">
+              <span className="pill">{connectionInstruction}</span>
             </div>
           </div>
 
