@@ -1805,6 +1805,17 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     empty: 'No cloud snapshot found',
                     error: 'Cloud action failed',
                     unavailable: 'Cloud unavailable',
+                    'no-backup': 'No local backup found',
+                    migrating: 'Uploading…',
+                    restoring: 'Downloading…',
+                  }[cloudActionStatus]
+                }
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </section>
+      ) : null}
 
       {showUserGuide ? (
         <div
@@ -1960,17 +1971,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             </div>
           </div>
         </div>
-      ) : null}
-                    'no-backup': 'No local backup found',
-                    migrating: 'Uploading…',
-                    restoring: 'Downloading…',
-                  }[cloudActionStatus]
-                }
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </section>
       ) : null}
     </main>
   );
