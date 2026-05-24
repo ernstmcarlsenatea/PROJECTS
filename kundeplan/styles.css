@@ -793,10 +793,21 @@ body::after {
   filter: brightness(1.05);
 }
 
-.graph-edit-handle {
+.graph-edit-wrap {
   position: absolute;
   right: 0.55rem;
   top: calc(0.55rem + 1.8rem + 0.4rem);
+  width: 1.5rem;
+  height: 1.5rem;
+  z-index: 3;
+}
+
+.graph-edit-wrap.is-open .graph-edit-menu {
+  display: flex;
+}
+
+.graph-edit-handle {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -814,6 +825,10 @@ body::after {
 
 .graph-edit-handle:hover {
   background: #fff4c2;
+}
+
+.graph-handle-menu-item.is-edit {
+  background: linear-gradient(180deg, #fff4c2, #ffe07a);
 }
 
 .chip,

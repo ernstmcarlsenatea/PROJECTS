@@ -187,6 +187,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [exportQuality, setExportQuality] = useState('normal');
   const [showUserGuide, setShowUserGuide] = useState(false);
   const [openHandleMenuId, setOpenHandleMenuId] = useState(null);
+  const [openEditMenuId, setOpenEditMenuId] = useState(null);
 
   useEffect(() => {
     if (!showUserGuide) {
@@ -222,6 +223,28 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       window.removeEventListener('keydown', onDocKey);
     };
   }, [openHandleMenuId]);
+
+  useEffect(() => {
+    if (!openEditMenuId) {
+      return undefined;
+    }
+    function onDocPointerDown(event) {
+      if (!event.target.closest('.graph-edit-wrap')) {
+        setOpenEditMenuId(null);
+      }
+    }
+    function onDocKey(event) {
+      if (event.key === 'Escape') {
+        setOpenEditMenuId(null);
+      }
+    }
+    document.addEventListener('pointerdown', onDocPointerDown);
+    window.addEventListener('keydown', onDocKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDocPointerDown);
+      window.removeEventListener('keydown', onDocKey);
+    };
+  }, [openEditMenuId]);
 
   const [versionCount, setVersionCount] = useState(() => loadVersionCount());
   const initialLocalSnapshot = useMemo(
@@ -1624,50 +1647,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                           Connect <strong>DEPENDENCY</strong>
                         </span>
                         <span
-                          role="menuitem"
-                          tabIndex={0}
-                          className="graph-handle-menu-item is-new"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setOpenHandleMenuId(null);
-                            openNewPartFrom(part.id);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setOpenHandleMenuId(null);
-                              openNewPartFrom(part.id);
-                            }
-                          }}
-                        >
-                          <strong>NEW</strong> part from here
-                        </span>
-                        <span
-                          role="menuitem"
-                          tabIndex={0}
-                          className="graph-handle-menu-item is-delete"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setOpenHandleMenuId(null);
-                            if (window.confirm(`Delete ${part.name}? Related parts will be reattached to its source if possible.`)) {
-                              deletePartById(part.id);
-                            }
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setOpenHandleMenuId(null);
-                              if (window.confirm(`Delete ${part.name}? Related parts will be reattached to its source if possible.`)) {
-                                deletePartById(part.id);
-                              }
-                            }
-                          }}
-                        >
-                          <strong>DELETE</strong> part
-                        </span>
-                        <span
                           role="button"
                           tabIndex={0}
                           className="graph-handle-menu-close"
@@ -1689,24 +1668,114 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                       </span>
                     </span>
                     <span
-                      className="graph-edit-handle"
-                      role="button"
-                      tabIndex={0}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        editPartInInspector(part.id);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          editPartInInspector(part.id);
-                        }
-                      }}
-                      title="Edit this part in the inspector"
+                      className={`graph-edit-wrap${openEditMenuId === part.id ? ' is-open' : ''}`}
+                      onMouseEnter={() => setOpenEditMenuId(part.id)}
                     >
-                      ✎
+                      <span
+                        className="graph-edit-handle"
+                        role="button"
+                        tabIndex={0}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenEditMenuId(part.id);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setOpenEditMenuId(part.id);
+                          }
+                        }}
+                        title="Click to edit / add / delete this part"
+                      >
+                        ✎
+                      </span>
+                      <span className="graph-handle-menu graph-edit-menu" role="menu" aria-label="Part actions">
+                        <span
+                          role="menuitem"
+                          tabIndex={0}
+                          className="graph-handle-menu-item is-edit"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenEditMenuId(null);
+                            editPartInInspector(part.id);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setOpenEditMenuId(null);
+                              editPartInInspector(part.id);
+                            }
+                          }}
+                        >
+                          <strong>EDIT</strong> in inspector
+                        </span>
+                        <span
+                          role="menuitem"
+                          tabIndex={0}
+                          className="graph-handle-menu-item is-new"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenEditMenuId(null);
+                            openNewPartFrom(part.id);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setOpenEditMenuId(null);
+                              openNewPartFrom(part.id);
+                            }
+                          }}
+                        >
+                          <strong>NEW</strong> part from here
+                        </span>
+                        <span
+                          role="menuitem"
+                          tabIndex={0}
+                          className="graph-handle-menu-item is-delete"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenEditMenuId(null);
+                            if (window.confirm(`Delete ${part.name}? Related parts will be reattached to its source if possible.`)) {
+                              deletePartById(part.id);
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setOpenEditMenuId(null);
+                              if (window.confirm(`Delete ${part.name}? Related parts will be reattached to its source if possible.`)) {
+                                deletePartById(part.id);
+                              }
+                            }
+                          }}
+                        >
+                          <strong>DELETE</strong> part
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="graph-handle-menu-close"
+                          aria-label="Close"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenEditMenuId(null);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setOpenEditMenuId(null);
+                            }
+                          }}
+                        >
+                          ×
+                        </span>
+                      </span>
                     </span>
                     <span className="node-title">{part.name}</span>
                     <span className="node-meta">{resolved.owner || 'No owner yet'}</span>
