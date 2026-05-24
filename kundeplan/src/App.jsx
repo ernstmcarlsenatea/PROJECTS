@@ -466,8 +466,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
   function findFreeNodePosition() {
     const padding = 40;
-    const stepX = NODE_WIDTH + padding;
-    const stepY = NODE_HEIGHT + padding;
     const startX = 140;
     const startY = 140;
 
@@ -479,34 +477,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       return { x: startX, y: startY };
     }
 
-    // Place below the lowest existing node, left-aligned at startX, never extending
-    // the canvas to the right past the existing right-most node.
+    // Always place the new part at the very bottom of the canvas, left-aligned.
+    // Never extend the canvas to the right — successive new parts stack downward.
     const maxBottom = positions.reduce(
       (acc, position) => Math.max(acc, position.y + NODE_HEIGHT),
       0,
     );
-    const maxRight = positions.reduce(
-      (acc, position) => Math.max(acc, position.x + NODE_WIDTH),
-      startX + NODE_WIDTH,
-    );
-
-    function overlaps(candidate) {
-      return positions.some((position) => (
-        Math.abs(position.x - candidate.x) < stepX &&
-        Math.abs(position.y - candidate.y) < stepY
-      ));
-    }
-
-    let y = maxBottom + padding;
-    for (let row = 0; row < 40; row += 1) {
-      for (let x = startX; x + NODE_WIDTH <= maxRight; x += stepX) {
-        const candidate = { x, y };
-        if (!overlaps(candidate)) {
-          return candidate;
-        }
-      }
-      y += stepY;
-    }
     return { x: startX, y: maxBottom + padding };
   }
 
