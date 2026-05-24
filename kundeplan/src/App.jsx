@@ -1613,6 +1613,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               />
             </label>
 
+            <div className="form-actions">
+              <button type="submit" className="primary-button">Save part</button>
+              <button type="button" className="danger-button" onClick={deletePart}>Delete part</button>
+              <button type="button" className="secondary-button" onClick={() => removeSourceLink(draft?.id)} disabled={!draft?.sourceId}>Clear source</button>
+            </div>
+
             <div className="dependency-picker">
               <div className="picker-header">
                 <span>Dependency manager</span>
@@ -1706,12 +1712,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </div>
               </div>
             ) : null}
-
-            <div className="form-actions">
-              <button type="submit" className="primary-button">Save part</button>
-              <button type="button" className="danger-button" onClick={deletePart}>Delete part</button>
-              <button type="button" className="secondary-button" onClick={() => removeSourceLink(draft?.id)} disabled={!draft?.sourceId}>Clear source</button>
-            </div>
           </form>
 
           <div className="details-card">
