@@ -217,6 +217,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const catalogRef = useRef(null);
   const partNameInputRef = useRef(null);
   const [startHereHint, setStartHereHint] = useState(false);
+  const [justSavedId, setJustSavedId] = useState(null);
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
   const displayParts = useMemo(() => {
@@ -777,6 +778,11 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
     requestAnimationFrame(() => {
       boardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollCanvasToPosition(nextPart.position);
+      setJustSavedId(targetId);
+      window.setTimeout(() => {
+        setJustSavedId((current) => (current === targetId ? null : current));
+      }, 2600);
     });
   }
 
@@ -1492,7 +1498,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     type="button"
                     key={part.id}
                     data-part-id={part.id}
-                    className={`graph-node ${selected} ${sourceClass} ${state.connectingFromId === part.id ? 'is-connecting-from' : ''} ${connectionHoverId === part.id ? 'is-connect-target' : ''} ${draggingNodeId === part.id ? 'is-dragging' : ''}`}
+                    className={`graph-node ${selected} ${sourceClass} ${state.connectingFromId === part.id ? 'is-connecting-from' : ''} ${connectionHoverId === part.id ? 'is-connect-target' : ''} ${draggingNodeId === part.id ? 'is-dragging' : ''} ${justSavedId === part.id ? 'is-just-saved' : ''}`}
                     style={{ left: position.x, top: position.y, width: `${NODE_WIDTH}px`, height: `${NODE_HEIGHT}px`, '--node-color': color }}
                     onClick={(event) => {
                       const shouldSuppressClick = suppressClickRef.current === part.id;

@@ -1385,3 +1385,42 @@ button:focus-visible {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-3px); }
 }
+
+.graph-node.is-just-saved {
+  animation: just-saved-pop 2.6s ease-out 1;
+  z-index: 4;
+}
+
+.graph-node.is-just-saved::after {
+  content: 'Saved ✓';
+  position: absolute;
+  top: -1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #b6f2c8, #6fd48a);
+  color: #14361f;
+  font-weight: 800;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  border: 2px solid var(--outline, #243046);
+  border-radius: 999px;
+  box-shadow: 0 3px 0 rgba(36, 48, 70, 0.18);
+  pointer-events: none;
+  animation: just-saved-bubble 2.6s ease-out 1;
+}
+
+@keyframes just-saved-pop {
+  0%   { box-shadow: 0 0 0 0 rgba(0, 180, 80, 0.55); transform: scale(1); }
+  15%  { box-shadow: 0 0 0 14px rgba(0, 180, 80, 0); transform: scale(1.04); }
+  30%  { box-shadow: 0 0 0 0 rgba(0, 180, 80, 0.55); transform: scale(1); }
+  45%  { box-shadow: 0 0 0 14px rgba(0, 180, 80, 0); transform: scale(1.03); }
+  60%  { box-shadow: 0 0 0 0 rgba(0, 180, 80, 0); transform: scale(1); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 180, 80, 0); transform: scale(1); }
+}
+
+@keyframes just-saved-bubble {
+  0%   { opacity: 0; transform: translate(-50%, 6px) scale(0.9); }
+  10%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  85%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -4px) scale(0.95); }
+}
