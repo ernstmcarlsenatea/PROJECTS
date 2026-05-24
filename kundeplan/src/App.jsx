@@ -1570,9 +1570,9 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                         ↘
                       </span>
                       <span className="graph-handle-menu" role="menu" aria-label="Choose connection type">
-                        <button
-                          type="button"
+                        <span
                           role="menuitem"
+                          tabIndex={0}
                           className="graph-handle-menu-item is-source"
                           onClick={(event) => {
                             event.stopPropagation();
@@ -1580,12 +1580,21 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                             connectionStartRef.current = part.id;
                             setOpenHandleMenuId(null);
                           }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setState((current) => ({ ...current, connectionMode: 'source', connectingFromId: part.id, pendingConnection: null }));
+                              connectionStartRef.current = part.id;
+                              setOpenHandleMenuId(null);
+                            }
+                          }}
                         >
                           Connect <strong>SOURCE</strong>
-                        </button>
-                        <button
-                          type="button"
+                        </span>
+                        <span
                           role="menuitem"
+                          tabIndex={0}
                           className="graph-handle-menu-item is-dependency"
                           onClick={(event) => {
                             event.stopPropagation();
@@ -1593,20 +1602,37 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                             connectionStartRef.current = part.id;
                             setOpenHandleMenuId(null);
                           }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setState((current) => ({ ...current, connectionMode: 'dependency', connectingFromId: part.id, pendingConnection: null }));
+                              connectionStartRef.current = part.id;
+                              setOpenHandleMenuId(null);
+                            }
+                          }}
                         >
                           Connect <strong>DEPENDENCY</strong>
-                        </button>
-                        <button
-                          type="button"
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
                           className="graph-handle-menu-close"
                           aria-label="Close"
                           onClick={(event) => {
                             event.stopPropagation();
                             setOpenHandleMenuId(null);
                           }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setOpenHandleMenuId(null);
+                            }
+                          }}
                         >
                           ×
-                        </button>
+                        </span>
                       </span>
                     </span>
                     <span
