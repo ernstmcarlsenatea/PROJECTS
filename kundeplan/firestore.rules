@@ -1,0 +1,29 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: true when the caller is signed in AND
+    //   (a) their email is verified, OR
+    //   (b) their email ends with @atea.no (trusted corporate domain).
+    function isTrustedUser() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && (
+          request.auth.token.email_verified == true
+          || request.auth.token.email.lower().matches('.*@atea[.]no')
+        );
+    }
+
+    // Cloud sync documents written by the Kundeplan app.
+    // One document per user, keyed by a sanitized principal (see firebaseStore.js).
+    match /kundeplanStates/{userKey} {
+      allow read, write: if isTrustedUser();
+    }
+
+    // Default deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
