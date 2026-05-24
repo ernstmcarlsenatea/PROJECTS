@@ -1589,6 +1589,8 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     <span
                       className={`graph-handle-wrap${openHandleMenuId === part.id ? ' is-open' : ''}`}
                       onMouseEnter={() => setOpenHandleMenuId(part.id)}
+                      onMouseLeave={() => setOpenHandleMenuId((current) => (current === part.id ? null : current))}
+                      onPointerDown={(event) => event.stopPropagation()}
                     >
                       <span
                         className="graph-handle"
@@ -1670,6 +1672,8 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     <span
                       className={`graph-edit-wrap${openEditMenuId === part.id ? ' is-open' : ''}`}
                       onMouseEnter={() => setOpenEditMenuId(part.id)}
+                      onMouseLeave={() => setOpenEditMenuId((current) => (current === part.id ? null : current))}
+                      onPointerDown={(event) => event.stopPropagation()}
                     >
                       <span
                         className="graph-edit-handle"

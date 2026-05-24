@@ -712,19 +712,30 @@ body::after {
 
 .graph-handle-menu {
   position: absolute;
-  top: calc(100% + 0.4rem);
+  top: 100%;
   right: 0;
   display: none;
   flex-direction: column;
   gap: 0.3rem;
-  padding: 0.45rem;
+  padding: 0.85rem 0.45rem 0.45rem 0.45rem;
+  margin-top: -0.4rem;
   background: var(--surface-strong, #fffdf6);
+  background-clip: padding-box;
   border: 3px solid var(--outline, #243046);
   border-radius: var(--radius-md, 12px);
   box-shadow: 0 8px 0 rgba(36, 48, 70, 0.18);
   width: max-content;
   white-space: nowrap;
   z-index: 5;
+}
+
+.graph-handle-menu::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -0.6rem;
+  height: 0.8rem;
 }
 
 .graph-handle-wrap.is-open .graph-handle-menu {
