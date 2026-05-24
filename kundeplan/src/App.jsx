@@ -200,6 +200,28 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     return () => window.removeEventListener('keydown', onGuideKey);
   }, [showUserGuide]);
 
+  useEffect(() => {
+    if (!openHandleMenuId) {
+      return undefined;
+    }
+    function onDocPointerDown(event) {
+      if (!event.target.closest('.graph-handle-wrap')) {
+        setOpenHandleMenuId(null);
+      }
+    }
+    function onDocKey(event) {
+      if (event.key === 'Escape') {
+        setOpenHandleMenuId(null);
+      }
+    }
+    document.addEventListener('pointerdown', onDocPointerDown);
+    window.addEventListener('keydown', onDocKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDocPointerDown);
+      window.removeEventListener('keydown', onDocKey);
+    };
+  }, [openHandleMenuId]);
+
   const [versionCount, setVersionCount] = useState(() => loadVersionCount());
   const initialLocalSnapshot = useMemo(
     () => createLocalSnapshot(loadState(), loadVersionCount()),
@@ -218,6 +240,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const partNameInputRef = useRef(null);
   const [startHereHint, setStartHereHint] = useState(false);
   const [justSavedId, setJustSavedId] = useState(null);
+  const [openHandleMenuId, setOpenHandleMenuId] = useState(null);
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
   const displayParts = useMemo(() => {
@@ -1531,12 +1554,18 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                       }
                     }}
                   >
-                    <span className="graph-handle-wrap">
+                    <span
+                      className={`graph-handle-wrap${openHandleMenuId === part.id ? ' is-open' : ''}`}
+                      onMouseEnter={() => setOpenHandleMenuId(part.id)}
+                    >
                       <span
                         className="graph-handle"
                         onPointerDown={(event) => beginConnection(part.id, event)}
-                        onClick={(event) => event.stopPropagation()}
-                        title="Hover to choose connection type"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenHandleMenuId(part.id);
+                        }}
+                        title="Click to choose connection type"
                       >
                         ↘
                       </span>
@@ -1549,6 +1578,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                             event.stopPropagation();
                             setState((current) => ({ ...current, connectionMode: 'source', connectingFromId: part.id, pendingConnection: null }));
                             connectionStartRef.current = part.id;
+                            setOpenHandleMenuId(null);
                           }}
                         >
                           Connect <strong>SOURCE</strong>
@@ -1561,9 +1591,21 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                             event.stopPropagation();
                             setState((current) => ({ ...current, connectionMode: 'dependency', connectingFromId: part.id, pendingConnection: null }));
                             connectionStartRef.current = part.id;
+                            setOpenHandleMenuId(null);
                           }}
                         >
                           Connect <strong>DEPENDENCY</strong>
+                        </button>
+                        <button
+                          type="button"
+                          className="graph-handle-menu-close"
+                          aria-label="Close"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenHandleMenuId(null);
+                          }}
+                        >
+                          ×
                         </button>
                       </span>
                     </span>

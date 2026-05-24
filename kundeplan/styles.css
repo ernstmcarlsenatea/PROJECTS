@@ -727,9 +727,27 @@ body::after {
   z-index: 5;
 }
 
-.graph-handle-wrap:hover .graph-handle-menu,
-.graph-handle-wrap:focus-within .graph-handle-menu {
+.graph-handle-wrap.is-open .graph-handle-menu {
   display: flex;
+}
+
+.graph-handle-menu-close {
+  appearance: none;
+  position: absolute;
+  top: -0.55rem;
+  right: -0.55rem;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 999px;
+  border: 2px solid var(--outline, #243046);
+  background: #fff;
+  color: #243046;
+  font-weight: 900;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 0 rgba(36, 48, 70, 0.18);
+  padding: 0;
 }
 
 .graph-handle-menu-item {
