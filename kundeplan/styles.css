@@ -1397,11 +1397,15 @@ button:focus-visible {
   top: -1.6rem;
   left: 50%;
   transform: translateX(-50%);
+  width: max-content;
+  max-width: none;
+  white-space: nowrap;
   background: linear-gradient(180deg, #b6f2c8, #6fd48a);
   color: #14361f;
   font-weight: 800;
   font-size: 0.78rem;
-  padding: 0.2rem 0.6rem;
+  line-height: 1;
+  padding: 0.25rem 0.55rem;
   border: 2px solid var(--outline, #243046);
   border-radius: 999px;
   box-shadow: 0 3px 0 rgba(36, 48, 70, 0.18);
