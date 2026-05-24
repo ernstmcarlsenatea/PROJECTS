@@ -463,11 +463,45 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setState((current) => ({ ...current, selectedId: partId, draft: clonePart(part), connectingFromId: null, pendingConnection: null }));
   }
 
+  function findFreeNodePosition() {
+    const padding = 40;
+    const stepX = NODE_WIDTH + padding;
+    const stepY = NODE_HEIGHT + padding;
+    const startX = 140;
+    const startY = 140;
+    const taken = state.parts
+      .map((part) => part.position)
+      .filter((position) => position && Number.isFinite(position.x) && Number.isFinite(position.y));
+
+    function overlaps(candidate) {
+      return taken.some((position) => {
+        return (
+          Math.abs(position.x - candidate.x) < stepX &&
+          Math.abs(position.y - candidate.y) < stepY
+        );
+      });
+    }
+
+    for (let row = 0; row < 40; row += 1) {
+      for (let col = 0; col < 40; col += 1) {
+        const candidate = { x: startX + col * stepX, y: startY + row * stepY };
+        if (!overlaps(candidate)) {
+          return candidate;
+        }
+      }
+    }
+    return { x: startX, y: startY };
+  }
+
   function openNewPart() {
     const anchor = state.parts.find((part) => part.id === state.selectedId) ?? null;
     const draftPart = createEmptyDraft();
     draftPart.sourceId = anchor?.id ?? null;
+    draftPart.position = findFreeNodePosition();
     setState((current) => ({ ...current, selectedId: null, draft: draftPart, connectingFromId: null, pendingConnection: null }));
+    requestAnimationFrame(() => {
+      inspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   function resetDemo() {
