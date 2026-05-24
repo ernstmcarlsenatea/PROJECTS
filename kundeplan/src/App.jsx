@@ -186,6 +186,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [newDependencyId, setNewDependencyId] = useState('');
   const [exportQuality, setExportQuality] = useState('normal');
   const [showUserGuide, setShowUserGuide] = useState(false);
+  const [openHandleMenuId, setOpenHandleMenuId] = useState(null);
 
   useEffect(() => {
     if (!showUserGuide) {
@@ -240,7 +241,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const partNameInputRef = useRef(null);
   const [startHereHint, setStartHereHint] = useState(false);
   const [justSavedId, setJustSavedId] = useState(null);
-  const [openHandleMenuId, setOpenHandleMenuId] = useState(null);
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
   const displayParts = useMemo(() => {
