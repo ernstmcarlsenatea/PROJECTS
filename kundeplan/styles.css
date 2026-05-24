@@ -742,6 +742,60 @@ button:focus-visible {
   min-width: 190px;
 }
 
+.panel-tools-compact {
+  width: 100%;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.panel-tools-compact .panel-tools-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.panel-tools-compact .panel-tools-end {
+  margin-left: auto;
+}
+
+.panel-tools-compact label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.panel-tools-compact select {
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  height: auto;
+}
+
+.panel-tools-compact .primary-button,
+.panel-tools-compact .secondary-button {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  min-height: 0;
+  line-height: 1.1;
+}
+
+.panel-tools-compact .pill {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+}
+
+.panel-tools-compact .edge-legend-item {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.45rem;
+  border-width: 2px;
+}
+
 .edge-legend {
   display: flex;
   flex-wrap: wrap;

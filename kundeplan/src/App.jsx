@@ -1091,8 +1091,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         </div>
       </header>
 
-      {activeAccount?.username?.toLowerCase() === 'ernst.magne.carlsen@atea.no' ? null : null}
-
       <section className="workspace-grid">
         <section className="panel board-panel">
           <div className="panel-header">
