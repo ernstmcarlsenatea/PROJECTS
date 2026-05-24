@@ -196,6 +196,8 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const dragRef = useRef(null);
   const suppressClickRef = useRef(null);
   const graphCanvasRef = useRef(null);
+  const inspectorRef = useRef(null);
+  const boardRef = useRef(null);
   const partsMap = useMemo(() => getPartsMap(state.parts), [state.parts]);
   const draft = state.draft ?? state.parts.find((part) => part.id === state.selectedId) ?? null;
   const displayParts = useMemo(() => {
@@ -705,6 +707,17 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     const parts = exists ? state.parts.map((part) => (part.id === targetId ? nextPart : part)) : [...state.parts, nextPart];
 
     commit({ parts, selectedId: targetId, draft: clonePart(nextPart), connectingFromId: null, pendingConnection: null });
+
+    requestAnimationFrame(() => {
+      boardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  function editPartInInspector(partId) {
+    selectPart(partId);
+    requestAnimationFrame(() => {
+      inspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   function deletePart() {
@@ -1127,7 +1140,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       </header>
 
       <section className="workspace-grid">
-        <section className="panel board-panel">
+        <section className="panel board-panel" ref={boardRef}>
           <div className="panel-header">
             <div>
               <p className="panel-kicker">Blueprint map</p>
@@ -1394,6 +1407,26 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     >
                       ↘
                     </span>
+                    <span
+                      className="graph-edit-handle"
+                      role="button"
+                      tabIndex={0}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        editPartInInspector(part.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          editPartInInspector(part.id);
+                        }
+                      }}
+                      title="Edit this part in the inspector"
+                    >
+                      ✎
+                    </span>
                     <span className="node-title">{part.name}</span>
                     <span className="node-meta">{resolved.owner || 'No owner yet'}</span>
                     <span className="chip">{resolved.residesIn || 'No residence'}</span>
@@ -1409,7 +1442,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           </div>
         </section>
 
-        <aside className="panel inspector-panel">
+        <aside className="panel inspector-panel" ref={inspectorRef}>
           <div className="panel-header">
             <div>
               <p className="panel-kicker">Inspector</p>

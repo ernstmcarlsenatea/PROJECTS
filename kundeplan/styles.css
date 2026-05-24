@@ -586,6 +586,29 @@ body::after {
   cursor: crosshair;
 }
 
+.graph-edit-handle {
+  position: absolute;
+  right: 0.55rem;
+  top: calc(0.55rem + 1.8rem + 0.4rem);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid var(--outline);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 3px 0 rgba(36, 48, 70, 0.12);
+  font-size: 0.85rem;
+  font-weight: 900;
+  cursor: pointer;
+  user-select: none;
+}
+
+.graph-edit-handle:hover {
+  background: #fff4c2;
+}
+
 .chip,
 .part-chip,
 .pill {
