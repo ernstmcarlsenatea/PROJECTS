@@ -2341,88 +2341,121 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
 function TomAndJerryFlag() {
   return (
-    <div className="tom-jerry" aria-hidden="true" title="Tom & Jerry waving the ATEA AS flag">
+    <div className="tom-jerry" aria-hidden="true" title="Garfield chasing Odie with the ATEA AS flag">
       <svg viewBox="0 0 360 170" xmlns="http://www.w3.org/2000/svg">
         {/* Ground shadow */}
         <ellipse cx="180" cy="158" rx="150" ry="6" fill="rgba(36,48,70,0.12)" />
 
-        {/* === TOM (gray cat, left) === */}
-        <g>
-          {/* Body */}
-          <ellipse cx="70" cy="120" rx="38" ry="32" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
-          {/* Belly */}
-          <ellipse cx="70" cy="128" rx="22" ry="18" fill="#f5f1e6" />
-          {/* Legs */}
-          <rect x="50" y="140" width="14" height="18" rx="5" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
-          <rect x="76" y="140" width="14" height="18" rx="5" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
-          {/* Tail */}
-          <path d="M105 120 Q140 95 130 70" stroke="#293042" strokeWidth="3" fill="none" />
-          <path d="M105 120 Q140 95 130 70" stroke="#8aa0b8" strokeWidth="6" fill="none" strokeLinecap="round" />
-          {/* Head */}
-          <circle cx="65" cy="75" r="30" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
-          {/* Ears */}
-          <polygon points="42,55 50,30 60,52" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
-          <polygon points="88,55 80,30 70,52" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
-          <polygon points="46,52 52,38 58,50" fill="#ff7da8" />
-          <polygon points="84,52 78,38 72,50" fill="#ff7da8" />
-          {/* Eyes */}
-          <ellipse cx="55" cy="72" rx="7" ry="9" fill="#fffdf6" stroke="#293042" strokeWidth="2" />
-          <ellipse cx="75" cy="72" rx="7" ry="9" fill="#fffdf6" stroke="#293042" strokeWidth="2" />
-          <circle cx="56" cy="74" r="3" fill="#293042" />
-          <circle cx="76" cy="74" r="3" fill="#293042" />
-          {/* Nose & mouth */}
-          <ellipse cx="65" cy="85" rx="4" ry="3" fill="#ff7da8" stroke="#293042" strokeWidth="1.5" />
-          <path d="M65 88 Q60 94 55 91 M65 88 Q70 94 75 91" stroke="#293042" strokeWidth="2" fill="none" strokeLinecap="round" />
-          {/* Whiskers */}
-          <path d="M50 86 L36 84 M50 90 L36 92 M80 86 L94 84 M80 90 L94 92" stroke="#293042" strokeWidth="1.5" />
-          {/* Arm holding flag */}
-          <path d="M95 100 Q120 90 145 95" stroke="#293042" strokeWidth="3" fill="none" />
-          <path d="M95 100 Q120 90 145 95" stroke="#8aa0b8" strokeWidth="8" fill="none" strokeLinecap="round" />
-          <circle cx="148" cy="96" r="6" fill="#8aa0b8" stroke="#293042" strokeWidth="2" />
+        {/* Motion / dust puffs trailing the chase */}
+        <g stroke="#293042" strokeWidth="2" fill="#fffdf6" opacity="0.9">
+          <circle cx="335" cy="140" r="6" />
+          <circle cx="322" cy="150" r="4" />
+          <circle cx="310" cy="144" r="3" />
+        </g>
+        <g stroke="#293042" strokeWidth="1.5" fill="none" opacity="0.6">
+          <path d="M300 90 L320 88" />
+          <path d="M300 100 L325 100" />
+          <path d="M300 110 L322 112" />
         </g>
 
-        {/* === FLAG POLE & FLAG === */}
-        <line x1="180" y1="30" x2="180" y2="150" stroke="#293042" strokeWidth="4" strokeLinecap="round" />
-        <circle cx="180" cy="28" r="5" fill="#ffd84f" stroke="#293042" strokeWidth="2" />
-        {/* Flag cloth */}
-        <path d="M180 38 L260 34 Q268 60 260 86 L180 90 Z" fill="#e30613" stroke="#293042" strokeWidth="3" />
-        {/* ATEA AS text */}
-        <text x="220" y="60" textAnchor="middle" fontFamily="Trebuchet MS, Segoe UI, sans-serif" fontSize="16" fontWeight="900" fill="#ffffff">ATEA</text>
-        <text x="220" y="78" textAnchor="middle" fontFamily="Trebuchet MS, Segoe UI, sans-serif" fontSize="12" fontWeight="900" fill="#ffffff">AS</text>
-
-        {/* === JERRY (brown mouse, right) === */}
+        {/* === ODIE (yellow dog, running left, fleeing) === */}
         <g>
+          {/* Back legs (mid-stride, kicked back) */}
+          <path d="M70 138 L92 150 L100 152" stroke="#293042" strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M75 140 L96 156" stroke="#f6c945" strokeWidth="7" strokeLinecap="round" />
+          <path d="M75 140 L96 156" stroke="#293042" strokeWidth="2.5" fill="none" strokeLinecap="round" />
           {/* Body */}
-          <ellipse cx="295" cy="130" rx="28" ry="24" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
+          <ellipse cx="60" cy="120" rx="42" ry="22" fill="#f6c945" stroke="#293042" strokeWidth="3" />
           {/* Belly */}
-          <ellipse cx="295" cy="136" rx="16" ry="13" fill="#f5d9a8" />
-          {/* Legs */}
-          <rect x="282" y="146" width="11" height="14" rx="4" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
-          <rect x="300" y="146" width="11" height="14" rx="4" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
-          {/* Tail */}
-          <path d="M320 130 Q345 130 340 110" stroke="#293042" strokeWidth="3" fill="none" />
-          <path d="M320 130 Q345 130 340 110" stroke="#c98a4b" strokeWidth="5" fill="none" strokeLinecap="round" />
-          {/* Head */}
-          <circle cx="295" cy="100" r="22" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
-          {/* Ears */}
-          <circle cx="280" cy="82" r="9" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
-          <circle cx="310" cy="82" r="9" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
-          <circle cx="280" cy="82" r="5" fill="#ff7da8" />
-          <circle cx="310" cy="82" r="5" fill="#ff7da8" />
-          {/* Eyes */}
-          <circle cx="288" cy="98" r="3.5" fill="#293042" />
-          <circle cx="302" cy="98" r="3.5" fill="#293042" />
-          <circle cx="289" cy="97" r="1" fill="#fffdf6" />
-          <circle cx="303" cy="97" r="1" fill="#fffdf6" />
-          {/* Nose & mouth */}
-          <circle cx="295" cy="108" r="3" fill="#293042" />
-          <path d="M295 111 Q290 116 286 113 M295 111 Q300 116 304 113" stroke="#293042" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          <ellipse cx="60" cy="128" rx="26" ry="10" fill="#fff2b8" />
+          {/* Front legs (stretched forward) */}
+          <path d="M28 130 L10 150" stroke="#f6c945" strokeWidth="7" strokeLinecap="round" />
+          <path d="M28 130 L10 150" stroke="#293042" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <path d="M36 134 L22 154" stroke="#f6c945" strokeWidth="7" strokeLinecap="round" />
+          <path d="M36 134 L22 154" stroke="#293042" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          {/* Tail (whipping back) */}
+          <path d="M100 118 Q118 108 124 118" stroke="#f6c945" strokeWidth="6" fill="none" strokeLinecap="round" />
+          <path d="M100 118 Q118 108 124 118" stroke="#293042" strokeWidth="2" fill="none" strokeLinecap="round" />
+          {/* Head (facing left) */}
+          <ellipse cx="22" cy="108" rx="20" ry="17" fill="#f6c945" stroke="#293042" strokeWidth="3" />
+          {/* Snout */}
+          <ellipse cx="8" cy="116" rx="10" ry="7" fill="#fff2b8" stroke="#293042" strokeWidth="2.5" />
+          {/* Nose */}
+          <ellipse cx="2" cy="114" rx="3" ry="2.5" fill="#293042" />
+          {/* Tongue */}
+          <path d="M2 119 Q-6 124 -10 120 Q-6 122 -2 122 Z" fill="#ff7da8" stroke="#293042" strokeWidth="1.5" />
+          {/* Eye (wide, scared) */}
+          <circle cx="20" cy="104" r="5" fill="#fffdf6" stroke="#293042" strokeWidth="2" />
+          <circle cx="22" cy="105" r="2.5" fill="#293042" />
+          {/* Floppy ear flying back */}
+          <path d="M30 96 Q50 78 60 92 Q52 102 38 102 Z" fill="#d49a1b" stroke="#293042" strokeWidth="2.5" />
+          {/* Tuft of hair */}
+          <path d="M20 92 L18 80 M24 91 L26 80 M16 93 L12 82" stroke="#293042" strokeWidth="2" strokeLinecap="round" />
+        </g>
+
+        {/* === GREEN ATEA AS FLAG (held by Garfield, waving back) === */}
+        {/* Pole */}
+        <line x1="270" y1="40" x2="248" y2="120" stroke="#293042" strokeWidth="4" strokeLinecap="round" />
+        <circle cx="271" cy="38" r="5" fill="#ffd84f" stroke="#293042" strokeWidth="2" />
+        {/* Flag cloth (waving) */}
+        <path d="M268 46 Q310 38 348 52 Q336 70 348 92 Q310 84 260 96 Z" fill="#2faa4a" stroke="#293042" strokeWidth="3" />
+        {/* ATEA AS text */}
+        <text x="305" y="68" textAnchor="middle" fontFamily="Trebuchet MS, Segoe UI, sans-serif" fontSize="16" fontWeight="900" fill="#ffffff">ATEA</text>
+        <text x="305" y="84" textAnchor="middle" fontFamily="Trebuchet MS, Segoe UI, sans-serif" fontSize="12" fontWeight="900" fill="#ffffff">AS</text>
+
+        {/* === GARFIELD (orange tabby, chasing from the right) === */}
+        <g>
+          {/* Back legs (mid-stride) */}
+          <path d="M260 140 L278 156" stroke="#ff9a3c" strokeWidth="8" strokeLinecap="round" />
+          <path d="M260 140 L278 156" stroke="#293042" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <path d="M250 142 L240 158" stroke="#ff9a3c" strokeWidth="8" strokeLinecap="round" />
+          <path d="M250 142 L240 158" stroke="#293042" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          {/* Body */}
+          <ellipse cx="240" cy="125" rx="40" ry="24" fill="#ff9a3c" stroke="#293042" strokeWidth="3" />
+          {/* Belly */}
+          <ellipse cx="240" cy="133" rx="24" ry="11" fill="#ffd9a8" />
+          {/* Tiger stripes */}
+          <path d="M218 112 Q222 118 218 124" stroke="#7a3b00" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <path d="M232 108 Q236 116 232 124" stroke="#7a3b00" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <path d="M248 108 Q252 116 248 124" stroke="#7a3b00" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          {/* Front leg (reaching forward toward Odie, also holding flag pole) */}
+          <path d="M205 130 Q190 124 175 130" stroke="#ff9a3c" strokeWidth="8" fill="none" strokeLinecap="round" />
+          <path d="M205 130 Q190 124 175 130" stroke="#293042" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <circle cx="173" cy="131" r="6" fill="#ff9a3c" stroke="#293042" strokeWidth="2" />
+          {/* Other arm holding flag pole */}
+          <path d="M225 110 Q235 90 250 95" stroke="#ff9a3c" strokeWidth="8" fill="none" strokeLinecap="round" />
+          <path d="M225 110 Q235 90 250 95" stroke="#293042" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          {/* Tail (curled up behind) */}
+          <path d="M278 122 Q300 100 290 80" stroke="#ff9a3c" strokeWidth="7" fill="none" strokeLinecap="round" />
+          <path d="M278 122 Q300 100 290 80" stroke="#293042" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <path d="M284 95 Q288 90 290 88" stroke="#7a3b00" strokeWidth="2" fill="none" strokeLinecap="round" />
+          {/* Head (facing left, mouth open) */}
+          <ellipse cx="200" cy="108" rx="26" ry="22" fill="#ff9a3c" stroke="#293042" strokeWidth="3" />
+          {/* Cheeks */}
+          <ellipse cx="186" cy="116" rx="8" ry="6" fill="#ffd9a8" />
+          <ellipse cx="200" cy="116" rx="6" ry="5" fill="#ffd9a8" />
+          {/* Forehead stripes */}
+          <path d="M196 92 Q200 88 204 92" stroke="#7a3b00" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <path d="M188 94 Q192 88 196 92" stroke="#7a3b00" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <path d="M204 92 Q208 88 212 94" stroke="#7a3b00" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          {/* Ears (pointy, laid back slightly) */}
+          <polygon points="182,90 178,72 192,84" fill="#ff9a3c" stroke="#293042" strokeWidth="2.5" />
+          <polygon points="218,90 222,72 208,84" fill="#ff9a3c" stroke="#293042" strokeWidth="2.5" />
+          <polygon points="184,86 182,76 190,84" fill="#ff7da8" />
+          <polygon points="216,86 218,76 210,84" fill="#ff7da8" />
+          {/* Eyes (half-lidded, determined) */}
+          <ellipse cx="188" cy="104" rx="6" ry="7" fill="#fffdf6" stroke="#293042" strokeWidth="2" />
+          <ellipse cx="202" cy="104" rx="6" ry="7" fill="#fffdf6" stroke="#293042" strokeWidth="2" />
+          <circle cx="186" cy="106" r="2.5" fill="#293042" />
+          <circle cx="200" cy="106" r="2.5" fill="#293042" />
+          {/* Heavy lids */}
+          <path d="M182 100 Q188 98 194 100" stroke="#293042" strokeWidth="2" fill="none" strokeLinecap="round" />
+          <path d="M196 100 Q202 98 208 100" stroke="#293042" strokeWidth="2" fill="none" strokeLinecap="round" />
+          {/* Nose & open mouth */}
+          <path d="M180 116 Q176 118 178 122 Q182 124 184 120" fill="#293042" />
+          <path d="M180 122 Q174 130 178 134 Q184 132 184 126" fill="#7a1a1a" stroke="#293042" strokeWidth="1.5" />
           {/* Whiskers */}
-          <path d="M283 108 L270 106 M283 112 L270 114 M307 108 L320 106 M307 112 L320 114" stroke="#293042" strokeWidth="1.2" />
-          {/* Arm holding flag */}
-          <path d="M275 115 Q235 100 215 100" stroke="#293042" strokeWidth="3" fill="none" />
-          <path d="M275 115 Q235 100 215 100" stroke="#c98a4b" strokeWidth="6" fill="none" strokeLinecap="round" />
-          <circle cx="212" cy="100" r="5" fill="#c98a4b" stroke="#293042" strokeWidth="2" />
+          <path d="M180 120 L168 118 M180 124 L168 126 M210 118 L222 116 M210 122 L222 124" stroke="#293042" strokeWidth="1.2" />
         </g>
       </svg>
     </div>
