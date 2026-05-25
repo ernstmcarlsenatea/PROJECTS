@@ -112,6 +112,32 @@ body::after {
   z-index: 2;
 }
 
+.tom-jerry {
+  position: absolute;
+  right: 1.25rem;
+  bottom: -42px;
+  width: 240px;
+  max-width: 40vw;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 0 rgba(36, 48, 70, 0.18));
+  transform: rotate(0.6deg);
+  z-index: 1;
+}
+
+.tom-jerry svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+@media (max-width: 720px) {
+  .tom-jerry {
+    position: static;
+    margin: 0.75rem auto 0;
+    width: 220px;
+  }
+}
+
 .hero-guide-button:hover {
   filter: brightness(1.03);
 }

@@ -1320,6 +1320,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             </>
           ) : null}
         </div>
+        <TomAndJerryFlag />
       </header>
 
       <section className="workspace-grid">
@@ -2335,6 +2336,96 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         </div>
       ) : null}
     </main>
+  );
+}
+
+function TomAndJerryFlag() {
+  return (
+    <div className="tom-jerry" aria-hidden="true" title="Tom & Jerry waving the ATEA AS flag">
+      <svg viewBox="0 0 360 170" xmlns="http://www.w3.org/2000/svg">
+        {/* Ground shadow */}
+        <ellipse cx="180" cy="158" rx="150" ry="6" fill="rgba(36,48,70,0.12)" />
+
+        {/* === TOM (gray cat, left) === */}
+        <g>
+          {/* Body */}
+          <ellipse cx="70" cy="120" rx="38" ry="32" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
+          {/* Belly */}
+          <ellipse cx="70" cy="128" rx="22" ry="18" fill="#f5f1e6" />
+          {/* Legs */}
+          <rect x="50" y="140" width="14" height="18" rx="5" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
+          <rect x="76" y="140" width="14" height="18" rx="5" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
+          {/* Tail */}
+          <path d="M105 120 Q140 95 130 70" stroke="#293042" strokeWidth="3" fill="none" />
+          <path d="M105 120 Q140 95 130 70" stroke="#8aa0b8" strokeWidth="6" fill="none" strokeLinecap="round" />
+          {/* Head */}
+          <circle cx="65" cy="75" r="30" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
+          {/* Ears */}
+          <polygon points="42,55 50,30 60,52" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
+          <polygon points="88,55 80,30 70,52" fill="#8aa0b8" stroke="#293042" strokeWidth="3" />
+          <polygon points="46,52 52,38 58,50" fill="#ff7da8" />
+          <polygon points="84,52 78,38 72,50" fill="#ff7da8" />
+          {/* Eyes */}
+          <ellipse cx="55" cy="72" rx="7" ry="9" fill="#fffdf6" stroke="#293042" strokeWidth="2" />
+          <ellipse cx="75" cy="72" rx="7" ry="9" fill="#fffdf6" stroke="#293042" strokeWidth="2" />
+          <circle cx="56" cy="74" r="3" fill="#293042" />
+          <circle cx="76" cy="74" r="3" fill="#293042" />
+          {/* Nose & mouth */}
+          <ellipse cx="65" cy="85" rx="4" ry="3" fill="#ff7da8" stroke="#293042" strokeWidth="1.5" />
+          <path d="M65 88 Q60 94 55 91 M65 88 Q70 94 75 91" stroke="#293042" strokeWidth="2" fill="none" strokeLinecap="round" />
+          {/* Whiskers */}
+          <path d="M50 86 L36 84 M50 90 L36 92 M80 86 L94 84 M80 90 L94 92" stroke="#293042" strokeWidth="1.5" />
+          {/* Arm holding flag */}
+          <path d="M95 100 Q120 90 145 95" stroke="#293042" strokeWidth="3" fill="none" />
+          <path d="M95 100 Q120 90 145 95" stroke="#8aa0b8" strokeWidth="8" fill="none" strokeLinecap="round" />
+          <circle cx="148" cy="96" r="6" fill="#8aa0b8" stroke="#293042" strokeWidth="2" />
+        </g>
+
+        {/* === FLAG POLE & FLAG === */}
+        <line x1="180" y1="30" x2="180" y2="150" stroke="#293042" strokeWidth="4" strokeLinecap="round" />
+        <circle cx="180" cy="28" r="5" fill="#ffd84f" stroke="#293042" strokeWidth="2" />
+        {/* Flag cloth */}
+        <path d="M180 38 L260 34 Q268 60 260 86 L180 90 Z" fill="#e30613" stroke="#293042" strokeWidth="3" />
+        {/* ATEA AS text */}
+        <text x="220" y="60" textAnchor="middle" fontFamily="Trebuchet MS, Segoe UI, sans-serif" fontSize="16" fontWeight="900" fill="#ffffff">ATEA</text>
+        <text x="220" y="78" textAnchor="middle" fontFamily="Trebuchet MS, Segoe UI, sans-serif" fontSize="12" fontWeight="900" fill="#ffffff">AS</text>
+
+        {/* === JERRY (brown mouse, right) === */}
+        <g>
+          {/* Body */}
+          <ellipse cx="295" cy="130" rx="28" ry="24" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
+          {/* Belly */}
+          <ellipse cx="295" cy="136" rx="16" ry="13" fill="#f5d9a8" />
+          {/* Legs */}
+          <rect x="282" y="146" width="11" height="14" rx="4" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
+          <rect x="300" y="146" width="11" height="14" rx="4" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
+          {/* Tail */}
+          <path d="M320 130 Q345 130 340 110" stroke="#293042" strokeWidth="3" fill="none" />
+          <path d="M320 130 Q345 130 340 110" stroke="#c98a4b" strokeWidth="5" fill="none" strokeLinecap="round" />
+          {/* Head */}
+          <circle cx="295" cy="100" r="22" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
+          {/* Ears */}
+          <circle cx="280" cy="82" r="9" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
+          <circle cx="310" cy="82" r="9" fill="#c98a4b" stroke="#293042" strokeWidth="3" />
+          <circle cx="280" cy="82" r="5" fill="#ff7da8" />
+          <circle cx="310" cy="82" r="5" fill="#ff7da8" />
+          {/* Eyes */}
+          <circle cx="288" cy="98" r="3.5" fill="#293042" />
+          <circle cx="302" cy="98" r="3.5" fill="#293042" />
+          <circle cx="289" cy="97" r="1" fill="#fffdf6" />
+          <circle cx="303" cy="97" r="1" fill="#fffdf6" />
+          {/* Nose & mouth */}
+          <circle cx="295" cy="108" r="3" fill="#293042" />
+          <path d="M295 111 Q290 116 286 113 M295 111 Q300 116 304 113" stroke="#293042" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          {/* Whiskers */}
+          <path d="M283 108 L270 106 M283 112 L270 114 M307 108 L320 106 M307 112 L320 114" stroke="#293042" strokeWidth="1.2" />
+          {/* Arm holding flag */}
+          <path d="M275 115 Q235 100 215 100" stroke="#293042" strokeWidth="3" fill="none" />
+          <path d="M275 115 Q235 100 215 100" stroke="#c98a4b" strokeWidth="6" fill="none" strokeLinecap="round" />
+          <circle cx="212" cy="100" r="5" fill="#c98a4b" stroke="#293042" strokeWidth="2" />
+        </g>
+      </svg>
+    </div>
   );
 }
 
