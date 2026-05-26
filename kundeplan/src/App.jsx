@@ -54,6 +54,94 @@ function applyCloudSnapshot(cloudSnapshot, setState, setVersionCount) {
   return true;
 }
 
+// Stable serialization for diffing parts in three-way merge.
+function hashPart(part) {
+  return JSON.stringify(part);
+}
+
+// Three-way merge of `parts` arrays:
+//   base   = parts last known to be in sync with the cloud
+//   local  = parts in this browser right now (may contain unsynced edits)
+//   remote = parts just received from the cloud (another user's writes)
+//
+// Per-part rules:
+//   - Only remote changed         -> take remote
+//   - Only local changed          -> keep local
+//   - Both changed (conflict)     -> remote wins (last-write-wins)
+//   - Remote added                -> include remote
+//   - Local added                 -> include local
+//   - One side deleted, other side unchanged -> honor deletion
+//   - One side deleted, other side modified  -> keep the modified version
+function mergePartsThreeWay(basePartsArr, localPartsArr, remotePartsArr) {
+  const baseMap = new Map((basePartsArr ?? []).map((p) => [p.id, p]));
+  const localMap = new Map(localPartsArr.map((p) => [p.id, p]));
+  const remoteMap = new Map(remotePartsArr.map((p) => [p.id, p]));
+
+  // Preserve display order: start with remote order, then append local-only ids.
+  const orderedIds = [];
+  const seen = new Set();
+  for (const part of remotePartsArr) {
+    orderedIds.push(part.id);
+    seen.add(part.id);
+  }
+  for (const part of localPartsArr) {
+    if (!seen.has(part.id)) {
+      orderedIds.push(part.id);
+      seen.add(part.id);
+    }
+  }
+
+  const merged = [];
+  for (const id of orderedIds) {
+    const base = baseMap.get(id) ?? null;
+    const local = localMap.get(id) ?? null;
+    const remote = remoteMap.get(id) ?? null;
+    const baseH = base ? hashPart(base) : null;
+    const localH = local ? hashPart(local) : null;
+    const remoteH = remote ? hashPart(remote) : null;
+
+    if (local && remote) {
+      if (localH === baseH) {
+        merged.push(clonePart(remote));
+      } else if (remoteH === baseH) {
+        merged.push(clonePart(local));
+      } else {
+        // Concurrent edit conflict — remote wins.
+        merged.push(clonePart(remote));
+      }
+    } else if (!local && remote) {
+      if (!base || remoteH !== baseH) {
+        // Remote added the part, or remote modified it while local deleted it.
+        merged.push(clonePart(remote));
+      }
+      // else: local deleted an unchanged part — honor the deletion.
+    } else if (local && !remote) {
+      if (!base || localH !== baseH) {
+        // Local added the part, or local modified it while remote deleted it.
+        merged.push(clonePart(local));
+      }
+      // else: remote deleted an unchanged part — honor the deletion.
+    }
+  }
+
+  // Drop dangling dependency / sourceId references to parts that no longer exist.
+  const idSet = new Set(merged.map((p) => p.id));
+  return merged.map((part) => {
+    const cleaned = clonePart(part);
+    cleaned.dependencies = cleaned.dependencies.filter((depId) => idSet.has(depId));
+    cleaned.dependencyLabels = Object.fromEntries(
+      Object.entries(cleaned.dependencyLabels ?? {}).filter(([depId]) => idSet.has(depId)),
+    );
+    cleaned.dependencyAnchors = Object.fromEntries(
+      Object.entries(cleaned.dependencyAnchors ?? {}).filter(([depId]) => idSet.has(depId)),
+    );
+    if (cleaned.sourceId && !idSet.has(cleaned.sourceId)) {
+      cleaned.sourceId = null;
+    }
+    return cleaned;
+  });
+}
+
 function createDefaultState() {
   return {
     parts: demoParts.map(clonePart),
@@ -252,6 +340,13 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     [],
   );
   const cloudLoadedRef = useRef(false);
+  const cloudInitializedRef = useRef(false);
+  // Snapshot of `parts` that we last knew the server agreed with. Used as the
+  // base for three-way merges when another browser pushes a change.
+  const remoteBaselineRef = useRef(null);
+  // Latest versionCount, accessed from the realtime subscription closure
+  // without making the subscription re-bind on every version bump.
+  const versionCountRef = useRef(0);
   const historyRef = useRef({ past: [], future: [] });
   const connectionStartRef = useRef(null);
   const dragRef = useRef(null);
@@ -297,69 +392,145 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }, [state]);
 
   useEffect(() => {
-    let cancelled = false;
     cloudLoadedRef.current = false;
+    cloudInitializedRef.current = false;
+    remoteBaselineRef.current = null;
 
-    async function bootstrapCloud() {
-      if (!cloudStore.enabled) {
-        cloudLoadedRef.current = true;
-        return;
-      }
+    if (!cloudStore.enabled) {
+      cloudLoadedRef.current = true;
+      return undefined;
+    }
 
-      try {
-        const cloudSnapshot = await cloudStore.loadSnapshot();
-        if (cancelled) {
+    const unsubscribe = cloudStore.subscribeSnapshot(
+      (cloudSnapshot, meta) => {
+        // Ignore echoes of writes that originated in THIS browser; otherwise we
+        // would clobber the user's in-flight edits with a slightly stale copy.
+        if (meta?.hasPendingWrites) {
           return;
         }
 
-        if (cloudSnapshot?.state) {
-          applyCloudSnapshot(cloudSnapshot, setState, setVersionCount);
-        } else {
-          const migrationKey = getCloudMigrationKey(cloudStore.userKey);
-          const alreadyMigrated = localStorage.getItem(migrationKey) === 'true';
-          if (!alreadyMigrated) {
-            await cloudStore.saveSnapshot({
-              state: initialLocalSnapshot.state,
-              versions: initialLocalSnapshot.versions,
-              versionCount: initialLocalSnapshot.versionCount,
-              migratedFromLocal: true,
-            });
-            localStorage.setItem(migrationKey, 'true');
+        if (!cloudSnapshot?.state) {
+          // No cloud document yet — first user seeds it from their local state.
+          if (!cloudInitializedRef.current) {
+            cloudInitializedRef.current = true;
+            cloudLoadedRef.current = true;
+            const migrationKey = getCloudMigrationKey(cloudStore.userKey);
+            const alreadyMigrated = localStorage.getItem(migrationKey) === 'true';
+            if (!alreadyMigrated) {
+              cloudStore
+                .saveSnapshot({
+                  state: initialLocalSnapshot.state,
+                  versions: initialLocalSnapshot.versions,
+                  versionCount: initialLocalSnapshot.versionCount,
+                  migratedFromLocal: true,
+                })
+                .catch((error) => console.error('Cloud migration failed:', error));
+              remoteBaselineRef.current = initialLocalSnapshot.state.parts.map(clonePart);
+              localStorage.setItem(migrationKey, 'true');
+            }
           }
+          return;
         }
-      } catch (error) {
-        console.error('Cloud bootstrap failed:', error);
-      } finally {
-        if (!cancelled) {
-          cloudLoadedRef.current = true;
-        }
-      }
-    }
 
-    bootstrapCloud();
+        const remoteState = normalizePersistedState(cloudSnapshot.state);
+
+        if (!cloudInitializedRef.current) {
+          // First snapshot for this session: adopt the cloud state wholesale.
+          cloudInitializedRef.current = true;
+          cloudLoadedRef.current = true;
+          applyCloudSnapshot(cloudSnapshot, setState, setVersionCount);
+          remoteBaselineRef.current = remoteState.parts.map(clonePart);
+          return;
+        }
+
+        // Subsequent remote update — three-way merge with whatever the user
+        // currently has in this browser so concurrent edits are preserved.
+        setState((currentLocal) => {
+          const baseline = remoteBaselineRef.current ?? remoteState.parts;
+          const mergedParts = mergePartsThreeWay(baseline, currentLocal.parts, remoteState.parts);
+          remoteBaselineRef.current = mergedParts.map(clonePart);
+
+          // If the merge differs from what the server has, push the merged
+          // result back so other browsers converge on the same state.
+          if (hashPart(mergedParts) !== hashPart(remoteState.parts)) {
+            cloudStore
+              .saveSnapshot({
+                state: { ...currentLocal, parts: mergedParts },
+                versions: loadVersions(),
+                versionCount: versionCountRef.current,
+              })
+              .catch((error) => console.error('Cloud merge save failed:', error));
+          }
+
+          // Keep this user's selection/draft/connection UI state local.
+          const stillSelected = mergedParts.some((p) => p.id === currentLocal.selectedId);
+          return {
+            ...currentLocal,
+            parts: mergedParts,
+            selectedId: stillSelected ? currentLocal.selectedId : mergedParts[0]?.id ?? null,
+          };
+        });
+
+        // Sync version metadata from the cloud as well.
+        if (Array.isArray(cloudSnapshot.versions)) {
+          localStorage.setItem(VERSIONS_KEY, JSON.stringify(cloudSnapshot.versions));
+        }
+        const cloudVersionCount = parseInt(cloudSnapshot.versionCount, 10);
+        if (Number.isFinite(cloudVersionCount) && cloudVersionCount >= 0) {
+          localStorage.setItem(VERSION_COUNT_KEY, String(cloudVersionCount));
+          setVersionCount(cloudVersionCount);
+        }
+      },
+      (error) => {
+        console.error('Cloud subscription error:', error);
+      },
+    );
 
     return () => {
-      cancelled = true;
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
     };
-  }, [cloudStore.enabled, cloudStore.userKey, initialLocalSnapshot]);
+  }, [cloudStore, initialLocalSnapshot]);
+
+  useEffect(() => {
+    versionCountRef.current = versionCount;
+  }, [versionCount]);
 
   useEffect(() => {
     if (!cloudStore.enabled || !cloudLoadedRef.current) {
       return;
     }
 
+    // Skip saving when our local state already matches the server baseline
+    // (e.g. just after applying a remote update). Avoids feedback loops.
+    if (
+      remoteBaselineRef.current &&
+      hashPart(state.parts) === hashPart(remoteBaselineRef.current)
+    ) {
+      return;
+    }
+
+    const partsSnapshot = state.parts.map(clonePart);
     const timeoutId = window.setTimeout(() => {
-      cloudStore.saveSnapshot({
-        state,
-        versions: loadVersions(),
-        versionCount,
-      }).catch((error) => {
-        console.error('Cloud sync failed:', error);
-      });
+      cloudStore
+        .saveSnapshot({
+          state,
+          versions: loadVersions(),
+          versionCount,
+        })
+        .then(() => {
+          // Advance the baseline so the echoed snapshot from Firestore is a
+          // no-op for the merge logic.
+          remoteBaselineRef.current = partsSnapshot;
+        })
+        .catch((error) => {
+          console.error('Cloud sync failed:', error);
+        });
     }, 450);
 
     return () => window.clearTimeout(timeoutId);
-  }, [cloudStore.enabled, cloudStore.userKey, state, versionCount]);
+  }, [cloudStore, state, versionCount]);
 
   useEffect(() => {
     function onKeyDown(event) {

@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { doc, getDoc, getFirestore, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, getFirestore, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 
 export const firebaseConfig = {
   apiKey: (import.meta.env.VITE_FIREBASE_API_KEY ?? 'AIzaSyDorw7eeJtpJcqSr3crBIFiiq8OEqj56FA').trim(),
@@ -30,12 +30,14 @@ function sanitizeKey(value) {
   return value.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
 }
 
+// Shared document key: every signed-in user reads from and writes to the same
+// Firestore document so that the latest content is always visible to everyone,
+// including first-time users. The `auth` argument is intentionally ignored.
+const SHARED_DOC_KEY = 'shared';
+
+// eslint-disable-next-line no-unused-vars
 function getUserKey(auth) {
-  const principal = auth?.activeAccount?.username ?? auth?.activeAccount?.homeAccountId ?? null;
-  if (!principal) {
-    return 'public';
-  }
-  return sanitizeKey(principal.toLowerCase());
+  return SHARED_DOC_KEY;
 }
 
 function isMissingDefaultDatabaseError(error) {
@@ -57,6 +59,9 @@ export function createCloudStore(auth) {
       },
       async saveSnapshot() {
         return null;
+      },
+      subscribeSnapshot() {
+        return () => {};
       },
     };
   }
@@ -87,6 +92,37 @@ export function createCloudStore(auth) {
 
         throw error;
       }
+    },
+    subscribeSnapshot(onChange, onError) {
+      if (!cloudAvailable) {
+        return () => {};
+      }
+
+      return onSnapshot(
+        stateRef,
+        { includeMetadataChanges: false },
+        (snapshot) => {
+          if (!snapshot.exists()) {
+            onChange(null, { fromCache: snapshot.metadata.fromCache, hasPendingWrites: snapshot.metadata.hasPendingWrites });
+            return;
+          }
+          onChange(snapshot.data(), {
+            fromCache: snapshot.metadata.fromCache,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          });
+        },
+        (error) => {
+          if (isMissingDefaultDatabaseError(error)) {
+            cloudAvailable = false;
+            return;
+          }
+          if (typeof onError === 'function') {
+            onError(error);
+          } else {
+            console.error('Cloud snapshot subscription failed:', error);
+          }
+        },
+      );
     },
     async saveSnapshot(payload) {
       if (!cloudAvailable) {
