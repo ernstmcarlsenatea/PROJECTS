@@ -1494,6 +1494,57 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         <TomAndJerryFlag />
       </header>
 
+      <section className="panel list-panel">
+        <div className="panel-header catalog-header">
+          <div className="catalog-header-intro">
+            <p className="panel-kicker">Catalog</p>
+            <h2>All parts grouped by residence</h2>
+            <p className="panel-note">This table gives the exact owner, presentation point, and dependency footprint for each part.</p>
+          </div>
+          <div className="panel-tools panel-tools-compact catalog-header-actions">
+            <label>
+              Export quality
+              <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <div className="panel-tools-group">
+              <button type="button" className="secondary-button" onClick={exportCatalogPNG}>Export PNG</button>
+              <button type="button" className="secondary-button" onClick={exportCatalogPDF}>Export PDF</button>
+            </div>
+          </div>
+        </div>
+        <div className="catalog" ref={catalogRef}>
+          {groupedParts.map(([residence, parts]) => (
+            <section className="catalog-group" key={residence}>
+              <h3>{residence}</h3>
+              <div className="catalog-list">
+                {parts.map((part) => {
+                  const summary = getSourceChainNames(part, partsMap);
+                  const sourceName = part.sourceId ? partsMap.get(part.sourceId)?.name ?? 'Missing source' : 'Source root';
+                  const isDerived = summary.length > 0;
+                  return (
+                    <button type="button" className={`catalog-item ${part.id === selectedId ? 'is-selected' : ''}`} key={part.id} onClick={() => selectPart(part.id)}>
+                      <div className="catalog-title">
+                        <span>{part.name}</span>
+                        <span className={`ribbon ${isDerived ? 'ribbon-derived' : 'ribbon-source'}`}>{isDerived ? 'Derived' : 'Source'}</span>
+                      </div>
+                      <div className="supporting-note">Owner: {part.owner || 'Unassigned'}</div>
+                      <div className="supporting-note">Presented in: {part.presentedIn || 'Not set'}</div>
+                      <div className="supporting-note">Source: {sourceName}</div>
+                      <div className="catalog-meta">
+                        {part.dependencies.length ? part.dependencies.map((dependencyId) => <span className="part-chip" key={dependencyId}>{partsMap.get(dependencyId)?.name ?? dependencyId}</span>) : <span className="part-chip">No dependencies</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
+
       <section className="workspace-grid">
         <section className="panel board-panel" ref={boardRef}>
           <div className="panel-header">
@@ -2204,57 +2255,6 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             </div>
           </div>
         </aside>
-      </section>
-
-      <section className="panel list-panel">
-        <div className="panel-header catalog-header">
-          <div className="catalog-header-intro">
-            <p className="panel-kicker">Catalog</p>
-            <h2>All parts grouped by residence</h2>
-            <p className="panel-note">This table gives the exact owner, presentation point, and dependency footprint for each part.</p>
-          </div>
-          <div className="panel-tools panel-tools-compact catalog-header-actions">
-            <label>
-              Export quality
-              <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-              </select>
-            </label>
-            <div className="panel-tools-group">
-              <button type="button" className="secondary-button" onClick={exportCatalogPNG}>Export PNG</button>
-              <button type="button" className="secondary-button" onClick={exportCatalogPDF}>Export PDF</button>
-            </div>
-          </div>
-        </div>
-        <div className="catalog" ref={catalogRef}>
-          {groupedParts.map(([residence, parts]) => (
-            <section className="catalog-group" key={residence}>
-              <h3>{residence}</h3>
-              <div className="catalog-list">
-                {parts.map((part) => {
-                  const summary = getSourceChainNames(part, partsMap);
-                  const sourceName = part.sourceId ? partsMap.get(part.sourceId)?.name ?? 'Missing source' : 'Source root';
-                  const isDerived = summary.length > 0;
-                  return (
-                    <button type="button" className={`catalog-item ${part.id === selectedId ? 'is-selected' : ''}`} key={part.id} onClick={() => selectPart(part.id)}>
-                      <div className="catalog-title">
-                        <span>{part.name}</span>
-                        <span className={`ribbon ${isDerived ? 'ribbon-derived' : 'ribbon-source'}`}>{isDerived ? 'Derived' : 'Source'}</span>
-                      </div>
-                      <div className="supporting-note">Owner: {part.owner || 'Unassigned'}</div>
-                      <div className="supporting-note">Presented in: {part.presentedIn || 'Not set'}</div>
-                      <div className="supporting-note">Source: {sourceName}</div>
-                      <div className="catalog-meta">
-                        {part.dependencies.length ? part.dependencies.map((dependencyId) => <span className="part-chip" key={dependencyId}>{partsMap.get(dependencyId)?.name ?? dependencyId}</span>) : <span className="part-chip">No dependencies</span>}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
       </section>
 
       <section className="stats-row" aria-label="Plan summary">
