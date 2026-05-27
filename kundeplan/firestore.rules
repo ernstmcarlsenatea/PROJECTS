@@ -3,22 +3,57 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: true when the caller is signed in AND
-    //   (a) their email is verified, OR
-    //   (b) their email ends with @atea.no (trusted corporate domain).
+    // Helper: true when the caller is signed in. Email verification is
+    // intentionally not required — any registered (signed-in) user is treated
+    // as a trusted reader. Write access is further restricted to admins
+    // (see isAdminUser below).
     function isTrustedUser() {
       return request.auth != null
-        && request.auth.token.email != null
+        && request.auth.token.email != null;
+    }
+
+    // Bootstrap super-admin email. This account always has admin rights so
+    // it can seed and manage the admins list document.
+    function superAdminEmail() {
+      return 'ernst.magne.carlsen@atea.no';
+    }
+
+    function callerEmail() {
+      return request.auth != null && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function adminsDoc() {
+      return get(/databases/$(database)/documents/kundeplanAdmins/list);
+    }
+
+    function adminsList() {
+      return exists(/databases/$(database)/documents/kundeplanAdmins/list)
+        ? adminsDoc().data.emails
+        : [];
+    }
+
+    function isAdminUser() {
+      return isTrustedUser()
         && (
-          request.auth.token.email_verified == true
-          || request.auth.token.email.lower().matches('.*@atea[.]no')
+          callerEmail() == superAdminEmail()
+          || callerEmail() in adminsList()
         );
     }
 
-    // Cloud sync documents written by the Kundeplan app.
-    // One document per user, keyed by a sanitized principal (see firebaseStore.js).
+    // Shared cloud sync document. All trusted users READ it so everyone sees
+    // the same data; only admin users may WRITE.
     match /kundeplanStates/{userKey} {
-      allow read, write: if isTrustedUser();
+      allow read: if isTrustedUser();
+      allow write: if isAdminUser();
+    }
+
+    // Admin list document. Any trusted user may read it (so the UI can tell
+    // whether they are an admin); only admin users may write it.
+    match /kundeplanAdmins/{docId} {
+      allow read: if isTrustedUser();
+      allow write: if isAdminUser();
     }
 
     // Default deny everything else.
@@ -27,3 +62,4 @@ service cloud.firestore {
     }
   }
 }
+

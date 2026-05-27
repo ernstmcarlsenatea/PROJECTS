@@ -3,7 +3,7 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
-import { createCloudStore } from './firebaseStore.js';
+import { createCloudStore, createAdminStore, computeIsAdmin, isSuperAdmin, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 const NODE_WIDTH = 220;
@@ -268,6 +268,35 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   );
   const [state, setState] = useState(() => loadState());
   const [cloudActionStatus, setCloudActionStatus] = useState('idle');
+  const [cloudActionError, setCloudActionError] = useState(null);
+  const adminStore = useMemo(() => createAdminStore(), []);
+  const [adminEmails, setAdminEmails] = useState([]);
+  const [adminError, setAdminError] = useState(null);
+  const [adminBusy, setAdminBusy] = useState(false);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+
+  const callerEmail = activeAccount?.username ?? null;
+  const isAdmin = computeIsAdmin(callerEmail, adminEmails);
+  const isSuper = isSuperAdmin(callerEmail);
+  const canEdit = isAdmin;
+
+  useEffect(() => {
+    if (!adminStore.enabled) {
+      return undefined;
+    }
+    const unsubscribe = adminStore.subscribeAdmins(
+      (emails) => setAdminEmails(emails),
+      (error) => {
+        console.error('Admin list subscription failed:', error);
+        setAdminError(error?.message ?? String(error));
+      },
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [adminStore]);
   const [connectionHoverId, setConnectionHoverId] = useState(null);
   const [draggingNodeId, setDraggingNodeId] = useState(null);
   const [hoveredLink, setHoveredLink] = useState(null);
@@ -502,6 +531,11 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       return;
     }
 
+    // Only admins are allowed to push changes to the shared cloud document.
+    if (!canEdit) {
+      return;
+    }
+
     // Skip saving when our local state already matches the server baseline
     // (e.g. just after applying a remote update). Avoids feedback loops.
     if (
@@ -530,7 +564,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     }, 450);
 
     return () => window.clearTimeout(timeoutId);
-  }, [cloudStore, state, versionCount]);
+  }, [cloudStore, state, versionCount, canEdit]);
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -718,10 +752,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function openNewPart() {
+    if (!canEdit) return;
     openNewPartFrom(state.selectedId);
   }
 
   function openNewPartFrom(anchorId) {
+    if (!canEdit) return;
     const anchor = state.parts.find((part) => part.id === anchorId) ?? null;
     const draftPart = createEmptyDraft();
     draftPart.sourceId = anchor?.id ?? null;
@@ -748,6 +784,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function updateDraft(field, value) {
+    if (!canEdit) return;
     if (!draft) {
       return;
     }
@@ -757,6 +794,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function updateSourceAnchor(sideKey, side) {
+    if (!canEdit) return;
     if (!draft) {
       return;
     }
@@ -770,6 +808,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function updateDependencyAnchor(dependencyId, sideKey, side) {
+    if (!canEdit) return;
     if (!draft) {
       return;
     }
@@ -786,6 +825,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function addDependencyToDraft(dependencyId) {
+    if (!canEdit) return;
     if (!draft || !dependencyId || dependencyId === draft.id || draft.dependencies.includes(dependencyId)) {
       return;
     }
@@ -815,6 +855,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function removeDependencyFromDraft(dependencyId) {
+    if (!canEdit) return;
     if (!draft || !draft.dependencies.includes(dependencyId)) {
       return;
     }
@@ -838,6 +879,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function updateDependencyLabel(dependencyId, label) {
+    if (!canEdit) return;
     if (!draft) {
       return;
     }
@@ -857,6 +899,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function beginNodeDrag(partId, event) {
+    if (!canEdit) return;
     if (event.button !== 0) {
       return;
     }
@@ -954,6 +997,10 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function savePart(event) {
+    if (!canEdit) {
+      event?.preventDefault?.();
+      return;
+    }
     event.preventDefault();
     if (!draft?.name.trim()) {
       window.alert('Give the part a name before saving.');
@@ -1021,6 +1068,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function deletePart() {
+    if (!canEdit) return;
     if (!draft || !state.parts.some((part) => part.id === draft.id)) {
       window.alert('Pick a part to delete first.');
       return;
@@ -1034,6 +1082,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function deletePartById(removedId) {
+    if (!canEdit) return;
     const target = state.parts.find((part) => part.id === removedId);
     if (!target) return;
     const removedSourceId = target.sourceId ?? null;
@@ -1056,12 +1105,14 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function beginConnection(partId, event) {
+    if (!canEdit) return;
     event.stopPropagation();
     connectionStartRef.current = partId;
     setState((current) => ({ ...current, connectingFromId: partId, pendingConnection: null }));
   }
 
   function setConnectionMode(mode) {
+    if (!canEdit) return;
     setState((current) => ({ ...current, connectionMode: mode, connectingFromId: null, pendingConnection: null }));
     connectionStartRef.current = null;
     setConnectionHoverId(null);
@@ -1080,6 +1131,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function completeConnection(targetId, sourceId = state.connectingFromId, { history = true } = {}) {
+    if (!canEdit) return;
     if (!sourceId || sourceId === targetId) {
       setState((current) => ({ ...current, connectingFromId: null, pendingConnection: null }));
       return;
@@ -1158,6 +1210,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function removeSourceLink(partId) {
+    if (!canEdit) return;
     commit((current) => ({
       ...current,
       parts: current.parts.map((part) => (part.id === partId ? { ...part, sourceId: null, sourceAnchor: { from: 'right', to: 'left' } } : part)),
@@ -1166,6 +1219,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function undo() {
+    if (!canEdit) return;
     const previous = historyRef.current.past.pop();
     if (!previous) {
       return;
@@ -1177,6 +1231,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function redo() {
+    if (!canEdit) return;
     const next = historyRef.current.future.pop();
     if (!next) {
       return;
@@ -1202,6 +1257,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }, [graph.positions, state.connectingFromId, connectionHoverId, state.connectionMode]);
 
   function saveVersion() {
+    if (!canEdit) return;
     const nextCount = versionCount + 1;
     const snapshot = {
       versionLabel: versionLabel(nextCount),
@@ -1221,33 +1277,15 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   function ensureCloudPassword() {
-    const STORAGE_FLAG = 'kundeplan-cloud-password-ok';
-    const REQUIRED = 'TP2B';
-    try {
-      if (localStorage.getItem(STORAGE_FLAG) === '1') {
-        return true;
-      }
-    } catch {
-      // ignore storage access errors
-    }
-    const entered = window.prompt('Enter cloud sync password:');
-    if (entered === null) {
-      return false;
-    }
-    if (entered !== REQUIRED) {
-      window.alert('Incorrect password.');
-      return false;
-    }
-    try {
-      localStorage.setItem(STORAGE_FLAG, '1');
-    } catch {
-      // ignore storage access errors
-    }
+    // Legacy password gate removed — admin access is now controlled via the
+    // Firestore admins list. This stub is kept to avoid breaking any callers
+    // and always returns true.
     return true;
   }
 
   async function migrateLocalDataToCloud() {
-    if (!ensureCloudPassword()) {
+    if (!canEdit) {
+      setCloudActionStatus('unauthorized');
       return;
     }
     if (!cloudStore.enabled) {
@@ -1260,6 +1298,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     }
 
     setCloudActionStatus('migrating');
+    setCloudActionError(null);
 
     try {
       const snapshot = createLocalSnapshot(state, versionCount);
@@ -1272,12 +1311,14 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       setCloudActionStatus('migrated');
     } catch (error) {
       console.error('Manual cloud migration failed:', error);
+      setCloudActionError(error?.message ?? String(error));
       setCloudActionStatus('error');
     }
   }
 
   async function restoreCloudDataToLocal() {
-    if (!ensureCloudPassword()) {
+    if (!canEdit) {
+      setCloudActionStatus('unauthorized');
       return;
     }
     if (!cloudStore.enabled) {
@@ -1290,6 +1331,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     }
 
     setCloudActionStatus('restoring');
+    setCloudActionError(null);
 
     try {
       const cloudSnapshot = await cloudStore.loadSnapshot();
@@ -1297,12 +1339,14 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       setCloudActionStatus(restored ? 'restored' : 'empty');
     } catch (error) {
       console.error('Restore from cloud failed:', error);
+      setCloudActionError(error?.message ?? String(error));
       setCloudActionStatus('error');
     }
   }
 
   async function recoverLatestLocalBackupToCloud() {
-    if (!ensureCloudPassword()) {
+    if (!canEdit) {
+      setCloudActionStatus('unauthorized');
       return;
     }
     if (!cloudStore.enabled) {
@@ -1322,6 +1366,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     }
 
     setCloudActionStatus('migrating');
+    setCloudActionError(null);
 
     try {
       const restoredState = normalizePersistedState({
@@ -1345,6 +1390,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       setCloudActionStatus('migrated');
     } catch (error) {
       console.error('Recover latest local backup failed:', error);
+      setCloudActionError(error?.message ?? String(error));
       setCloudActionStatus('error');
     }
   }
@@ -1467,9 +1513,22 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           </p>
         </div>
         <div className="hero-actions">
-          <button type="button" className="version-save-button" onClick={saveVersion}>Save version</button>
+          <button
+            type="button"
+            className="version-save-button"
+            onClick={saveVersion}
+            disabled={!canEdit}
+            title={canEdit ? 'Save a labelled snapshot of the current plan.' : 'Only admins can save versions.'}
+          >
+            Save version
+          </button>
           {versionCount > 0 ? (
             <span className="version-badge">v{versionLabel(versionCount)}</span>
+          ) : null}
+          {activeAccount ? (
+            <span className={`pill ${isAdmin ? 'admin-pill' : 'readonly-pill'}`}>
+              {isSuper ? 'Super-admin' : isAdmin ? 'Admin' : 'Read-only'}
+            </span>
           ) : null}
           {!auth.enabled ? (
             <span className="auth-disabled-badge" title={auth.publicAccess ? 'Public access is enabled. Sign-in is not required.' : 'SSO is disabled until an Entra App Registration client ID is configured.'}>
@@ -1504,14 +1563,14 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             <div className="panel-tools panel-tools-compact panel-tools-stacked">
               <div className="panel-tools-row">
                 <div className="panel-tools-group">
-                  <button type="button" className="primary-button" onClick={openNewPart}>New part</button>
-                  <button type="button" className="secondary-button" onClick={undo} disabled={!historyRef.current.past.length}>Undo</button>
-                  <button type="button" className="secondary-button" onClick={redo} disabled={!historyRef.current.future.length}>Redo</button>
+                  <button type="button" className="primary-button" onClick={openNewPart} disabled={!canEdit}>New part</button>
+                  <button type="button" className="secondary-button" onClick={undo} disabled={!canEdit || !historyRef.current.past.length}>Undo</button>
+                  <button type="button" className="secondary-button" onClick={redo} disabled={!canEdit || !historyRef.current.future.length}>Redo</button>
                 </div>
                 <div className="panel-tools-group">
                   <label>
                     Connection mode
-                    <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)}>
+                    <select value={state.connectionMode} onChange={(event) => setConnectionMode(event.target.value)} disabled={!canEdit}>
                       <option value="dependency">Dependency</option>
                       <option value="source">Source</option>
                     </select>
@@ -2028,6 +2087,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           </div>
 
           <form className="part-form" onSubmit={savePart}>
+            <fieldset disabled={!canEdit} style={canEdit ? undefined : { border: 0, padding: 0, margin: 0, opacity: 0.7 }}>
             <div className="form-row">
               <label className={`part-name-label${startHereHint ? ' start-here-active' : ''}`}>
                 Part name
@@ -2230,6 +2290,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </div>
               </div>
             ) : null}
+            </fieldset>
           </form>
 
           <div className="details-card">
@@ -2266,7 +2327,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         ))}
       </section>
 
-      {activeAccount?.username?.toLowerCase() === 'ernst.magne.carlsen@atea.no' ? (
+      {isAdmin ? (
       <section className="panel cloud-panel">
         <div className="panel-header cloud-panel-header">
           <div>
@@ -2316,6 +2377,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     empty: 'No cloud snapshot found',
                     error: 'Cloud action failed',
                     unavailable: 'Cloud unavailable',
+                    unauthorized: 'Not authorized (admin only)',
                     'no-backup': 'No local backup found',
                     migrating: 'Uploading…',
                     restoring: 'Downloading…',
@@ -2323,6 +2385,108 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 }
               </span>
             ) : null}
+            {cloudActionStatus === 'error' && cloudActionError ? (
+              <span className="cloud-status-error" title={cloudActionError}>
+                {cloudActionError}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </section>
+      ) : null}
+
+      {isAdmin ? (
+      <section className="panel cloud-panel admin-panel">
+        <div className="panel-header cloud-panel-header">
+          <div>
+            <p className="panel-kicker">Admin roles</p>
+            <h2>Manage who can edit</h2>
+            <p className="panel-note">
+              Only admins can change the shared cloud data. All other signed-in users see a read-only view.
+              {isSuper ? ' You are the super-admin and can always manage this list.' : ''}
+            </p>
+          </div>
+          <div className="cloud-actions admin-actions">
+            <form
+              className="admin-add-form"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                const email = newAdminEmail.trim().toLowerCase();
+                if (!email) return;
+                if (adminEmails.includes(email) || email === SUPER_ADMIN_EMAIL) {
+                  setNewAdminEmail('');
+                  return;
+                }
+                setAdminBusy(true);
+                setAdminError(null);
+                try {
+                  await adminStore.saveAdmins([...adminEmails, email]);
+                  setNewAdminEmail('');
+                } catch (error) {
+                  console.error('Add admin failed:', error);
+                  setAdminError(error?.message ?? String(error));
+                } finally {
+                  setAdminBusy(false);
+                }
+              }}
+            >
+              <input
+                type="email"
+                value={newAdminEmail}
+                onChange={(event) => setNewAdminEmail(event.target.value)}
+                placeholder="someone@atea.no"
+                disabled={adminBusy || !adminStore.enabled}
+              />
+              <button
+                type="submit"
+                className="secondary-button"
+                disabled={adminBusy || !adminStore.enabled || !newAdminEmail.trim()}
+              >
+                {adminBusy ? 'Saving…' : 'Add admin'}
+              </button>
+            </form>
+            <div className="admin-list">
+              <div className="admin-list-row">
+                <span className="pill cloud-user-pill">Super-admin</span>
+                <span>{SUPER_ADMIN_EMAIL}</span>
+              </div>
+              {adminEmails.length === 0 ? (
+                <p className="catalog-empty">No additional admins yet.</p>
+              ) : (
+                adminEmails.map((email) => (
+                  <div className="admin-list-row" key={email}>
+                    <span>{email}</span>
+                    <button
+                      type="button"
+                      className="danger-button"
+                      disabled={adminBusy}
+                      onClick={async () => {
+                        if (!window.confirm(`Remove admin rights for ${email}?`)) {
+                          return;
+                        }
+                        setAdminBusy(true);
+                        setAdminError(null);
+                        try {
+                          await adminStore.saveAdmins(adminEmails.filter((entry) => entry !== email));
+                        } catch (error) {
+                          console.error('Remove admin failed:', error);
+                          setAdminError(error?.message ?? String(error));
+                        } finally {
+                          setAdminBusy(false);
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+              {adminError ? (
+                <span className="cloud-status-error" title={adminError}>
+                  {adminError}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
       </section>

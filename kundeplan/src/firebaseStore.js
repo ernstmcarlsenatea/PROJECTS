@@ -1,6 +1,33 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { doc, getDoc, getFirestore, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 
+// Bootstrap super-admin. This email always has admin rights even if no
+// admins document exists yet, so it can grant admin status to other users.
+export const SUPER_ADMIN_EMAIL = 'ernst.magne.carlsen@atea.no';
+const ADMINS_DOC_PATH = ['kundeplanAdmins', 'list'];
+
+function normalizeEmail(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+export function isSuperAdmin(email) {
+  return normalizeEmail(email) === SUPER_ADMIN_EMAIL;
+}
+
+export function computeIsAdmin(email, adminEmails) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) {
+    return false;
+  }
+  if (normalized === SUPER_ADMIN_EMAIL) {
+    return true;
+  }
+  if (!Array.isArray(adminEmails)) {
+    return false;
+  }
+  return adminEmails.some((entry) => normalizeEmail(entry) === normalized);
+}
+
 export const firebaseConfig = {
   apiKey: (import.meta.env.VITE_FIREBASE_API_KEY ?? 'AIzaSyDorw7eeJtpJcqSr3crBIFiiq8OEqj56FA').trim(),
   authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? 'kundeplan.firebaseapp.com').trim(),
@@ -147,6 +174,76 @@ export function createCloudStore(auth) {
 
         throw error;
       }
+    },
+  };
+}
+
+export function createAdminStore() {
+  const db = getDb();
+  if (!db) {
+    return {
+      enabled: false,
+      async loadAdmins() {
+        return [];
+      },
+      subscribeAdmins() {
+        return () => {};
+      },
+      async saveAdmins() {
+        throw new Error('Firebase is not configured.');
+      },
+    };
+  }
+
+  const adminsRef = doc(db, ADMINS_DOC_PATH[0], ADMINS_DOC_PATH[1]);
+
+  function readEmails(data) {
+    const raw = Array.isArray(data?.emails) ? data.emails : [];
+    const cleaned = raw.map(normalizeEmail).filter(Boolean);
+    return Array.from(new Set(cleaned));
+  }
+
+  return {
+    enabled: true,
+    async loadAdmins() {
+      try {
+        const snapshot = await getDoc(adminsRef);
+        return snapshot.exists() ? readEmails(snapshot.data()) : [];
+      } catch (error) {
+        if (isMissingDefaultDatabaseError(error)) {
+          return [];
+        }
+        throw error;
+      }
+    },
+    subscribeAdmins(onChange, onError) {
+      return onSnapshot(
+        adminsRef,
+        (snapshot) => {
+          onChange(snapshot.exists() ? readEmails(snapshot.data()) : []);
+        },
+        (error) => {
+          if (typeof onError === 'function') {
+            onError(error);
+          } else {
+            console.error('Admin subscription failed:', error);
+          }
+        },
+      );
+    },
+    async saveAdmins(emails) {
+      const cleaned = Array.from(
+        new Set((Array.isArray(emails) ? emails : []).map(normalizeEmail).filter(Boolean)),
+      );
+      await setDoc(
+        adminsRef,
+        {
+          emails: cleaned,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return cleaned;
     },
   };
 }

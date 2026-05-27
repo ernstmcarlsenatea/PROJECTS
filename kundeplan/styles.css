@@ -391,6 +391,76 @@ body::after {
   background: linear-gradient(180deg, #ffe6a1, #ffd16a);
 }
 
+.cloud-status-badge.is-unauthorized {
+  background: linear-gradient(180deg, #ffd1d1, #ff9b9b);
+}
+
+.cloud-status-error {
+  display: inline-block;
+  max-width: 360px;
+  margin-left: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b1f1f;
+  background: #ffe5e5;
+  border: 1px solid #f3b8b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-pill {
+  background: linear-gradient(180deg, #d8f0c9, #aedf8a);
+  color: #1c3b13;
+}
+
+.readonly-pill {
+  background: linear-gradient(180deg, #eef0f5, #cfd6e3);
+  color: #2c3650;
+}
+
+.admin-panel {
+  margin-top: 1rem;
+}
+
+.admin-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.8rem;
+  width: 100%;
+  max-width: 520px;
+}
+
+.admin-add-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.admin-add-form input {
+  flex: 1;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid #cfd6e3;
+}
+
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.admin-list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  background: #f4f6fb;
+}
+
 .secondary-button {
   background: linear-gradient(180deg, #ffffff, #fffbef);
   color: var(--ink);
