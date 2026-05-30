@@ -3,25 +3,41 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: true when the caller is signed in. Email verification is
-    // intentionally not required — any registered (signed-in) user is treated
-    // as a trusted reader. Write access is further restricted to admins
-    // (see isAdminUser below).
-    function isTrustedUser() {
-      return request.auth != null
-        && request.auth.token.email != null;
-    }
-
     // Bootstrap super-admin email. This account always has admin rights so
-    // it can seed and manage the admins list document.
+    // it can seed and manage the admins list document. Exempt from the
+    // email-verification check so the project owner can bootstrap access.
     function superAdminEmail() {
       return 'ernst.magne.carlsen@atea.no';
+    }
+
+    // Only @atea.no accounts may use the app.
+    function allowedEmailDomain() {
+      return 'atea.no';
     }
 
     function callerEmail() {
       return request.auth != null && request.auth.token.email != null
         ? request.auth.token.email.lower()
         : '';
+    }
+
+    function emailDomain(email) {
+      return email.split('@').size() == 2 ? email.split('@')[1] : '';
+    }
+
+    // Trusted = signed in, with a verified email on the allowed domain.
+    // The super-admin is always trusted so they can bootstrap the admins doc
+    // even before verifying their email.
+    function isTrustedUser() {
+      return request.auth != null
+        && callerEmail() != ''
+        && (
+          callerEmail() == superAdminEmail()
+          || (
+            request.auth.token.email_verified == true
+            && emailDomain(callerEmail()) == allowedEmailDomain()
+          )
+        );
     }
 
     function adminsDoc() {
