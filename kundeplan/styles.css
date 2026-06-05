@@ -1647,6 +1647,11 @@ button:focus-visible {
   opacity: 0.75;
 }
 
+.structure-summary-modal {
+  max-width: none;
+  width: 75vw;
+}
+
 .structure-summary-header-actions {
   display: flex;
   gap: 0.5rem;
