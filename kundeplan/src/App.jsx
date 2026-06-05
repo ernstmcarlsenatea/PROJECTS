@@ -260,6 +260,87 @@ function loadVersions() {
   }
 }
 
+function buildStructureSummary(parts) {
+  const partsMap = getPartsMap(parts);
+  const childrenByParent = new Map();
+  const dependentsByPart = new Map();
+
+  for (const part of parts) {
+    if (part.sourceId && partsMap.has(part.sourceId)) {
+      const bucket = childrenByParent.get(part.sourceId) ?? [];
+      bucket.push(part);
+      childrenByParent.set(part.sourceId, bucket);
+    }
+    for (const depId of part.dependencies ?? []) {
+      if (!partsMap.has(depId)) continue;
+      const bucket = dependentsByPart.get(depId) ?? [];
+      bucket.push({ part, label: part.dependencyLabels?.[depId] ?? null });
+      dependentsByPart.set(depId, bucket);
+    }
+  }
+
+  const entries = [...parts]
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .map((part) => {
+      const sourceChain = getSourceChainNames(part, partsMap);
+      const directSource = part.sourceId ? partsMap.get(part.sourceId) : null;
+      const dependencies = (part.dependencies ?? [])
+        .map((depId) => {
+          const dep = partsMap.get(depId);
+          if (!dep) return null;
+          return { id: depId, name: dep.name || '(unnamed)', label: part.dependencyLabels?.[depId] ?? null };
+        })
+        .filter(Boolean);
+      const dependents = (dependentsByPart.get(part.id) ?? []).map((entry) => ({
+        id: entry.part.id,
+        name: entry.part.name || '(unnamed)',
+        label: entry.label,
+      }));
+      const children = (childrenByParent.get(part.id) ?? []).map((child) => ({
+        id: child.id,
+        name: child.name || '(unnamed)',
+      }));
+      const isRoot = !directSource;
+      const isLeaf = children.length === 0;
+      const isOrphan = isRoot && dependents.length === 0 && dependencies.length === 0 && children.length === 0;
+      return {
+        id: part.id,
+        name: part.name || '(unnamed)',
+        owner: part.owner || '',
+        sourceChain,
+        directSource: directSource ? directSource.name || '(unnamed)' : null,
+        dependencies,
+        dependents,
+        children,
+        isRoot,
+        isLeaf,
+        isOrphan,
+      };
+    });
+
+  const totalSourceLinks = parts.filter((part) => part.sourceId && partsMap.has(part.sourceId)).length;
+  const totalDependencies = parts.reduce(
+    (acc, part) => acc + (part.dependencies ?? []).filter((id) => partsMap.has(id)).length,
+    0,
+  );
+  const roots = entries.filter((entry) => entry.isRoot);
+  const leaves = entries.filter((entry) => entry.isLeaf);
+  const orphans = entries.filter((entry) => entry.isOrphan);
+
+  return {
+    generatedAt: new Date(),
+    totals: {
+      parts: parts.length,
+      sourceLinks: totalSourceLinks,
+      dependencies: totalDependencies,
+      roots: roots.length,
+      leaves: leaves.length,
+      orphans: orphans.length,
+    },
+    entries,
+  };
+}
+
 function App({ auth = { enabled: false, activeAccount: null, signOut: null, publicAccess: false } }) {
   const activeAccount = auth.activeAccount ?? null;
   const cloudStore = useMemo(
@@ -303,6 +384,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [newDependencyId, setNewDependencyId] = useState('');
   const [exportQuality, setExportQuality] = useState('normal');
   const [showUserGuide, setShowUserGuide] = useState(false);
+  const [structureSummary, setStructureSummary] = useState(null);
   const [openHandleMenuId, setOpenHandleMenuId] = useState(null);
   const [openEditMenuId, setOpenEditMenuId] = useState(null);
 
@@ -318,6 +400,19 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     window.addEventListener('keydown', onGuideKey);
     return () => window.removeEventListener('keydown', onGuideKey);
   }, [showUserGuide]);
+
+  useEffect(() => {
+    if (!structureSummary) {
+      return undefined;
+    }
+    function onSummaryKey(event) {
+      if (event.key === 'Escape') {
+        setStructureSummary(null);
+      }
+    }
+    window.addEventListener('keydown', onSummaryKey);
+    return () => window.removeEventListener('keydown', onSummaryKey);
+  }, [structureSummary]);
 
   useEffect(() => {
     if (!openHandleMenuId) {
@@ -1490,6 +1585,10 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     ? `Click a target box to ${state.connectionMode === 'source' ? 'set a source link' : 'add a dependency'}.`
     : 'Click the link dot on a box, then click the target box.';
 
+  function refreshStructureSummary() {
+    setStructureSummary(buildStructureSummary(state.parts));
+  }
+
   return (
     <main className="app-shell">
       <div className="sky-blobs" aria-hidden="true" />
@@ -1598,6 +1697,14 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   </label>
                   <button type="button" className="secondary-button" onClick={exportPNG}>Export PNG</button>
                   <button type="button" className="secondary-button" onClick={exportPDF}>Export PDF</button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={refreshStructureSummary}
+                    title="Generate a fresh summary of sources and dependencies in the flow canvas"
+                  >
+                    Structure summary
+                  </button>
                 </div>
               </div>
             </div>
@@ -2666,6 +2773,133 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   <li>Click outside a popout (or move the mouse away) to close it.</li>
                 </ul>
               </section>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {structureSummary ? (
+        <div
+          className="user-guide-overlay structure-summary-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="structure-summary-title"
+          onClick={() => setStructureSummary(null)}
+        >
+          <div
+            className="user-guide-modal structure-summary-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="user-guide-header">
+              <div>
+                <p className="panel-kicker">Flow canvas</p>
+                <h2 id="structure-summary-title">Structure summary</h2>
+                <p className="structure-summary-meta">
+                  Generated {structureSummary.generatedAt.toLocaleString()}
+                </p>
+              </div>
+              <div className="structure-summary-header-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={refreshStructureSummary}
+                  title="Re-read the canvas and rebuild this summary"
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setStructureSummary(null)}
+                  aria-label="Close the structure summary"
+                >
+                  Close
+                </button>
+              </div>
+            </header>
+
+            <div className="user-guide-body structure-summary-body">
+              <section className="structure-summary-totals">
+                <span className="pill"><strong>{structureSummary.totals.parts}</strong> parts</span>
+                <span className="pill"><strong>{structureSummary.totals.sourceLinks}</strong> source links</span>
+                <span className="pill"><strong>{structureSummary.totals.dependencies}</strong> dependencies</span>
+                <span className="pill"><strong>{structureSummary.totals.roots}</strong> roots</span>
+                <span className="pill"><strong>{structureSummary.totals.leaves}</strong> leaves</span>
+                <span className="pill"><strong>{structureSummary.totals.orphans}</strong> orphans</span>
+              </section>
+
+              {structureSummary.entries.length === 0 ? (
+                <p>No parts on the canvas yet.</p>
+              ) : (
+                <ul className="structure-summary-list">
+                  {structureSummary.entries.map((entry) => (
+                    <li key={entry.id} className="structure-summary-item">
+                      <div className="structure-summary-item-header">
+                        <h3>{entry.name}</h3>
+                        <div className="structure-summary-tags">
+                          {entry.isRoot ? <span className="pill">root</span> : null}
+                          {entry.isLeaf ? <span className="pill">leaf</span> : null}
+                          {entry.isOrphan ? <span className="pill">orphan</span> : null}
+                        </div>
+                      </div>
+                      {entry.owner ? (
+                        <p className="structure-summary-owner">Owner: {entry.owner}</p>
+                      ) : null}
+
+                      <dl className="structure-summary-dl">
+                        <dt>Source path</dt>
+                        <dd>
+                          {entry.sourceChain.length > 0
+                            ? `${entry.sourceChain.join(' → ')} → ${entry.name}`
+                            : '— (root)'}
+                        </dd>
+
+                        <dt>Direct source</dt>
+                        <dd>{entry.directSource ?? '—'}</dd>
+
+                        <dt>Children (parts that inherit from this)</dt>
+                        <dd>
+                          {entry.children.length === 0
+                            ? '—'
+                            : entry.children.map((child) => child.name).join(', ')}
+                        </dd>
+
+                        <dt>Dependencies ({entry.dependencies.length})</dt>
+                        <dd>
+                          {entry.dependencies.length === 0 ? (
+                            '—'
+                          ) : (
+                            <ul className="structure-summary-sublist">
+                              {entry.dependencies.map((dep) => (
+                                <li key={dep.id}>
+                                  {dep.name}
+                                  {dep.label ? <span className="structure-summary-label"> — {dep.label}</span> : null}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </dd>
+
+                        <dt>Dependents ({entry.dependents.length})</dt>
+                        <dd>
+                          {entry.dependents.length === 0 ? (
+                            '—'
+                          ) : (
+                            <ul className="structure-summary-sublist">
+                              {entry.dependents.map((dep) => (
+                                <li key={dep.id}>
+                                  {dep.name}
+                                  {dep.label ? <span className="structure-summary-label"> — {dep.label}</span> : null}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </dd>
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>
