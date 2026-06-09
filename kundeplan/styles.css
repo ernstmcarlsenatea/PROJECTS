@@ -1387,6 +1387,16 @@ button:focus-visible {
   flex-wrap: wrap;
   gap: 0.45rem;
   margin-top: 0.3rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.graph-node:hover .node-legend,
+.graph-node:focus-visible .node-legend,
+.graph-node.is-selected .node-legend {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 @keyframes floaty {
