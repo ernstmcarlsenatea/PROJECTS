@@ -613,7 +613,6 @@ body::after {
   fill: none;
   stroke: rgba(36, 48, 70, 0.42);
   stroke-width: 3;
-  marker-end: url(#arrow);
   opacity: 0.9;
 }
 
@@ -658,15 +657,18 @@ body::after {
   stroke: #1d9c8f;
   stroke-width: 4;
   opacity: 1;
+  marker-end: url(#arrow-highlighted);
 }
 
 .edge-source {
   stroke: rgba(42, 152, 134, 0.72);
+  marker-end: url(#arrow-source);
 }
 
 .edge-dependency {
   stroke: rgba(255, 161, 67, 0.82);
   stroke-dasharray: 8 7;
+  marker-end: url(#arrow-dependency);
 }
 
 .connection-preview {
@@ -674,6 +676,7 @@ body::after {
   stroke-width: 4;
   stroke-dasharray: 9 7;
   opacity: 0.95;
+  marker-end: url(#arrow-preview);
 }
 
 .node-layer {
