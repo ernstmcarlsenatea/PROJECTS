@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import html2canvas from 'html2canvas';
+import { toCanvas as htmlToCanvas } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
@@ -1490,95 +1490,121 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     }
   }
 
+  function getExportPixelRatio() {
+    const qualityMultiplier = EXPORT_QUALITY_SCALE[exportQuality] ?? EXPORT_QUALITY_SCALE.normal;
+    const baseRatio = Math.max(window.devicePixelRatio || 1, 2);
+    return baseRatio * qualityMultiplier;
+  }
+
+  function renderToCanvas(el, options = {}) {
+    const pixelRatio = getExportPixelRatio();
+    return htmlToCanvas(el, {
+      backgroundColor: '#fffdf6',
+      pixelRatio,
+      cacheBust: true,
+      skipFonts: false,
+      style: { transform: 'none', transformOrigin: 'top left' },
+      ...options,
+    });
+  }
+
+  function downloadCanvasAsPNG(canvas, filename) {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = url;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+      'image/png',
+      1,
+    );
+  }
+
+  function downloadCanvasAsPDF(canvas, cssWidth, cssHeight, filename) {
+    // Convert CSS pixels to millimeters at 96 DPI so PDF pages are sized sensibly
+    // regardless of the high-DPI pixelRatio used to render the canvas.
+    const widthMm = (cssWidth / 96) * 25.4;
+    const heightMm = (cssHeight / 96) * 25.4;
+    const pdf = new jsPDF({
+      orientation: widthMm > heightMm ? 'landscape' : 'portrait',
+      unit: 'mm',
+      format: [widthMm, heightMm],
+      compress: true,
+    });
+    const imgData = canvas.toDataURL('image/png');
+    pdf.addImage(imgData, 'PNG', 0, 0, widthMm, heightMm, undefined, 'FAST');
+    pdf.save(filename);
+  }
+
   async function captureCanvas() {
     const el = graphCanvasRef.current;
     if (!el) return null;
 
     const exportPadding = 96;
-    const captureWidth = exportBounds.width + exportPadding * 2;
-    const captureHeight = exportBounds.height + exportPadding * 2;
-    const captureScale = EXPORT_QUALITY_SCALE[exportQuality] ?? EXPORT_QUALITY_SCALE.normal;
+    const cssWidth = exportBounds.width + exportPadding * 2;
+    const cssHeight = exportBounds.height + exportPadding * 2;
 
-    return html2canvas(el, {
-      scale: captureScale,
-      useCORS: true,
-      backgroundColor: '#fffdf6',
-      width: captureWidth,
-      height: captureHeight,
-      x: -exportPadding,
-      y: -exportPadding,
-      scrollX: 0,
-      scrollY: 0,
-      onclone: (clonedDocument) => {
-        const clonedCanvas = clonedDocument.querySelector('.graph-canvas');
-        if (clonedCanvas) {
-          clonedCanvas.classList.add('is-exporting');
-        }
-      },
-    });
+    const previousClasses = el.className;
+    el.classList.add('is-exporting');
+    try {
+      const canvas = await renderToCanvas(el, {
+        width: cssWidth,
+        height: cssHeight,
+        canvasWidth: cssWidth,
+        canvasHeight: cssHeight,
+        style: {
+          transform: `translate(${exportPadding}px, ${exportPadding}px)`,
+          transformOrigin: 'top left',
+          width: `${exportBounds.width}px`,
+          height: `${exportBounds.height}px`,
+        },
+      });
+      return { canvas, cssWidth, cssHeight };
+    } finally {
+      el.className = previousClasses;
+    }
   }
 
   async function exportPNG() {
-    const canvas = await captureCanvas();
-    if (!canvas) return;
-    const link = document.createElement('a');
-    link.download = 'kundeplan.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    const result = await captureCanvas();
+    if (!result) return;
+    downloadCanvasAsPNG(result.canvas, 'kundeplan.png');
   }
 
   async function exportPDF() {
-    const canvas = await captureCanvas();
-    if (!canvas) return;
-    const imgData = canvas.toDataURL('image/png');
-    const pdfWidth = canvas.width;
-    const pdfHeight = canvas.height;
-    const pdf = new jsPDF({
-      orientation: pdfWidth > pdfHeight ? 'landscape' : 'portrait',
-      unit: 'px',
-      format: [pdfWidth, pdfHeight],
-    });
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save('kundeplan.pdf');
+    const result = await captureCanvas();
+    if (!result) return;
+    downloadCanvasAsPDF(result.canvas, result.cssWidth, result.cssHeight, 'kundeplan.pdf');
   }
 
   async function captureCatalog() {
     const el = catalogRef.current;
     if (!el) return null;
-    const captureScale = EXPORT_QUALITY_SCALE[exportQuality] ?? EXPORT_QUALITY_SCALE.normal;
-    return html2canvas(el, {
-      scale: captureScale,
-      useCORS: true,
-      backgroundColor: '#fffdf6',
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: el.scrollWidth,
-      windowHeight: el.scrollHeight,
+    const cssWidth = el.scrollWidth;
+    const cssHeight = el.scrollHeight;
+    const canvas = await renderToCanvas(el, {
+      width: cssWidth,
+      height: cssHeight,
+      canvasWidth: cssWidth,
+      canvasHeight: cssHeight,
     });
+    return { canvas, cssWidth, cssHeight };
   }
 
   async function exportCatalogPNG() {
-    const canvas = await captureCatalog();
-    if (!canvas) return;
-    const link = document.createElement('a');
-    link.download = 'kundeplan-catalog.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    const result = await captureCatalog();
+    if (!result) return;
+    downloadCanvasAsPNG(result.canvas, 'kundeplan-catalog.png');
   }
 
   async function exportCatalogPDF() {
-    const canvas = await captureCatalog();
-    if (!canvas) return;
-    const imgData = canvas.toDataURL('image/png');
-    const pdfWidth = canvas.width;
-    const pdfHeight = canvas.height;
-    const pdf = new jsPDF({
-      orientation: pdfWidth > pdfHeight ? 'landscape' : 'portrait',
-      unit: 'px',
-      format: [pdfWidth, pdfHeight],
-    });
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save('kundeplan-catalog.pdf');
+    const result = await captureCatalog();
+    if (!result) return;
+    downloadCanvasAsPDF(result.canvas, result.cssWidth, result.cssHeight, 'kundeplan-catalog.pdf');
   }
 
   const connectionInstruction = state.connectingFromId
