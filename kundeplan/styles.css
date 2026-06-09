@@ -728,6 +728,10 @@ body::after {
   box-shadow: 0 10px 0 rgba(36, 48, 70, 0.12) !important;
 }
 
+.graph-canvas.is-exporting > svg {
+  display: none !important;
+}
+
 .graph-node.is-connecting-from {
   outline: 4px solid #ff5f92;
   transform: translateY(-2px);
