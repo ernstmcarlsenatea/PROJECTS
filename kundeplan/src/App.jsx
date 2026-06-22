@@ -3,7 +3,7 @@ import { toCanvas as htmlToCanvas } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
-import { createCloudStore, createAdminStore, computeIsAdmin, isSuperAdmin, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
 import { RunbookPage } from './RunbookPage.jsx';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
@@ -352,15 +352,39 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [cloudActionStatus, setCloudActionStatus] = useState('idle');
   const [cloudActionError, setCloudActionError] = useState(null);
   const adminStore = useMemo(() => createAdminStore(), []);
+  const userStore = useMemo(() => createUserStore(), []);
+  const statsRunbookStore = useMemo(() => createRunbookStore(), []);
   const [adminEmails, setAdminEmails] = useState([]);
   const [adminError, setAdminError] = useState(null);
   const [adminBusy, setAdminBusy] = useState(false);
-  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [users, setUsers] = useState([]);
+  const [userDraft, setUserDraft] = useState({ email: '', role: 'viewer', displayName: '' });
+  const [editingUserEmail, setEditingUserEmail] = useState(null);
+  const [editingUserDraft, setEditingUserDraft] = useState(null);
+  const [runbookConfigForStats, setRunbookConfigForStats] = useState({});
 
   const callerEmail = activeAccount?.username ?? null;
-  const isAdmin = computeIsAdmin(callerEmail, adminEmails);
+
+  // Effective users: prefer the new user registry; fall back to legacy admin
+  // list so existing installations keep working before a save happens.
+  const effectiveUsers = useMemo(() => {
+    if (users.length > 0) return users;
+    if (adminEmails.length === 0) return [];
+    return adminEmails.map((email) => ({
+      email,
+      role: 'admin',
+      displayName: '',
+      addedAt: null,
+      addedBy: '',
+    }));
+  }, [users, adminEmails]);
+
+  const callerRole = getUserRole(callerEmail, effectiveUsers);
   const isSuper = isSuperAdmin(callerEmail);
+  const isAdmin = isSuper || callerRole === 'admin' || computeIsAdmin(callerEmail, adminEmails);
+  const isEditor = callerRole === 'editor';
   const canEdit = isAdmin;
+  const canEditRunbook = isAdmin || isEditor;
 
   useEffect(() => {
     if (!adminStore.enabled) {
@@ -379,6 +403,38 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       }
     };
   }, [adminStore]);
+
+  useEffect(() => {
+    if (!userStore.enabled) {
+      return undefined;
+    }
+    const unsubscribe = userStore.subscribeUsers(
+      (nextUsers) => setUsers(nextUsers),
+      (error) => {
+        console.error('User list subscription failed:', error);
+        setAdminError(error?.message ?? String(error));
+      },
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [userStore]);
+
+  // Subscribe to runbook config for statistics panel
+  useEffect(() => {
+    if (!statsRunbookStore.enabled) return undefined;
+    const unsubscribe = statsRunbookStore.subscribeConfig(
+      (data, meta) => {
+        if (meta?.hasPendingWrites) return;
+        const cfg = (data && typeof data.config === 'object' && data.config) || {};
+        setRunbookConfigForStats(cfg);
+      },
+      (error) => console.error('Runbook stats subscription failed:', error),
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [statsRunbookStore]);
   const [currentPage, setCurrentPage] = useState('blueprint');
   const [connectionHoverId, setConnectionHoverId] = useState(null);
   const [draggingNodeId, setDraggingNodeId] = useState(null);
@@ -1617,6 +1673,212 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setStructureSummary(buildStructureSummary(state.parts));
   }
 
+  // ============================================================
+  // USER MANAGEMENT
+  // ============================================================
+
+  async function addUser(event) {
+    event?.preventDefault?.();
+    if (!isAdmin) return;
+    const email = (userDraft.email || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      window.alert('Enter a valid email address.');
+      return;
+    }
+    if (email === SUPER_ADMIN_EMAIL) {
+      window.alert('The super-admin is always present and cannot be added manually.');
+      return;
+    }
+    if (effectiveUsers.some((u) => u.email === email)) {
+      window.alert('That user is already in the list. Edit their role instead.');
+      return;
+    }
+    setAdminBusy(true);
+    setAdminError(null);
+    try {
+      const nextUsers = [
+        ...effectiveUsers.filter((u) => u.email !== email),
+        {
+          email,
+          role: userDraft.role || 'viewer',
+          displayName: (userDraft.displayName || '').trim(),
+          addedAt: new Date().toISOString(),
+          addedBy: callerEmail ?? 'unknown',
+        },
+      ];
+      await userStore.saveUsers(nextUsers);
+      setUserDraft({ email: '', role: 'viewer', displayName: '' });
+    } catch (error) {
+      console.error('Add user failed:', error);
+      setAdminError(error?.message ?? String(error));
+    } finally {
+      setAdminBusy(false);
+    }
+  }
+
+  function startEditUser(user) {
+    setEditingUserEmail(user.email);
+    setEditingUserDraft({ ...user });
+  }
+
+  function cancelEditUser() {
+    setEditingUserEmail(null);
+    setEditingUserDraft(null);
+  }
+
+  async function saveEditUser() {
+    if (!isAdmin || !editingUserDraft) return;
+    setAdminBusy(true);
+    setAdminError(null);
+    try {
+      const nextUsers = effectiveUsers.map((u) =>
+        u.email === editingUserEmail
+          ? {
+              ...u,
+              role: editingUserDraft.role || u.role,
+              displayName: (editingUserDraft.displayName || '').trim(),
+            }
+          : u,
+      );
+      await userStore.saveUsers(nextUsers);
+      cancelEditUser();
+    } catch (error) {
+      console.error('Save user failed:', error);
+      setAdminError(error?.message ?? String(error));
+    } finally {
+      setAdminBusy(false);
+    }
+  }
+
+  async function updateUserRole(email, role) {
+    if (!isAdmin) return;
+    setAdminBusy(true);
+    setAdminError(null);
+    try {
+      const nextUsers = effectiveUsers.map((u) => (u.email === email ? { ...u, role } : u));
+      await userStore.saveUsers(nextUsers);
+    } catch (error) {
+      console.error('Update role failed:', error);
+      setAdminError(error?.message ?? String(error));
+    } finally {
+      setAdminBusy(false);
+    }
+  }
+
+  async function deleteUser(email) {
+    if (!isAdmin) return;
+    if (email === SUPER_ADMIN_EMAIL) {
+      window.alert('Cannot remove the super-admin.');
+      return;
+    }
+    if (!window.confirm(`Remove user ${email} from the registry?`)) return;
+    setAdminBusy(true);
+    setAdminError(null);
+    try {
+      const nextUsers = effectiveUsers.filter((u) => u.email !== email);
+      await userStore.saveUsers(nextUsers);
+    } catch (error) {
+      console.error('Delete user failed:', error);
+      setAdminError(error?.message ?? String(error));
+    } finally {
+      setAdminBusy(false);
+    }
+  }
+
+  // Sorted view of users (including the implicit super-admin row)
+  const usersForDisplay = useMemo(() => {
+    const rows = [
+      {
+        email: SUPER_ADMIN_EMAIL,
+        role: 'admin',
+        displayName: 'Super-admin',
+        addedAt: null,
+        addedBy: 'system',
+        isSuper: true,
+      },
+      ...effectiveUsers
+        .filter((u) => u.email !== SUPER_ADMIN_EMAIL)
+        .map((u) => ({ ...u, isSuper: false })),
+    ];
+    rows.sort((a, b) => {
+      if (a.isSuper) return -1;
+      if (b.isSuper) return 1;
+      const sa = ROLES[a.role]?.sortOrder ?? 9;
+      const sb = ROLES[b.role]?.sortOrder ?? 9;
+      if (sa !== sb) return sa - sb;
+      return a.email.localeCompare(b.email);
+    });
+    return rows;
+  }, [effectiveUsers]);
+
+  // ============================================================
+  // STATISTICS
+  // ============================================================
+
+  const adminStats = useMemo(() => {
+    const roleCounts = { admin: 0, editor: 0, viewer: 0 };
+    for (const u of usersForDisplay) {
+      if (roleCounts[u.role] != null) roleCounts[u.role]++;
+    }
+
+    const totalParts = state.parts.length;
+    const partsMapLocal = getPartsMap(state.parts);
+    const rootCount = state.parts.filter((p) => !p.sourceId || !partsMapLocal.has(p.sourceId)).length;
+    const dependencyLinkCount = state.parts.reduce(
+      (acc, p) => acc + (p.dependencies ?? []).filter((id) => partsMapLocal.has(id)).length,
+      0,
+    );
+    const sourceLinkCount = state.parts.filter((p) => p.sourceId && partsMapLocal.has(p.sourceId)).length;
+    const ownerSet = new Set(state.parts.map((p) => p.owner).filter(Boolean));
+    const residenceSet = new Set(state.parts.map((p) => p.residesIn).filter(Boolean));
+
+    const rb = runbookConfigForStats || {};
+    const rbEntries = Object.values(rb);
+    const stepDone = rbEntries.filter((e) => e?.status === 'done').length;
+    const stepInProgress = rbEntries.filter((e) => e?.status === 'in-progress').length;
+    const stepSkipped = rbEntries.filter((e) => e?.status === 'skipped').length;
+    const stepWithAssignee = rbEntries.filter((e) => e?.assignee).length;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const stepOverdue = rbEntries.filter(
+      (e) => e?.dueDate && e.dueDate < todayStr && e?.status !== 'done' && e?.status !== 'skipped',
+    ).length;
+    const stepStartedNotDone = totalParts - stepDone - stepSkipped; // remaining
+
+    const assigneeCounts = new Map();
+    for (const e of rbEntries) {
+      if (e?.assignee) {
+        assigneeCounts.set(e.assignee, (assigneeCounts.get(e.assignee) ?? 0) + 1);
+      }
+    }
+    const topAssignees = [...assigneeCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    return {
+      roleCounts,
+      totalUsers: usersForDisplay.length,
+      blueprint: {
+        totalParts,
+        rootCount,
+        sourceLinkCount,
+        dependencyLinkCount,
+        ownerCount: ownerSet.size,
+        residenceCount: residenceSet.size,
+      },
+      runbook: {
+        totalSteps: totalParts,
+        done: stepDone,
+        inProgress: stepInProgress,
+        skipped: stepSkipped,
+        overdue: stepOverdue,
+        withAssignee: stepWithAssignee,
+        remaining: Math.max(0, stepStartedNotDone),
+        donePct: totalParts > 0 ? Math.round((stepDone / totalParts) * 100) : 0,
+      },
+      topAssignees,
+    };
+  }, [usersForDisplay, state.parts, runbookConfigForStats]);
+
   return (
     <main className="app-shell">
       <div className="sky-blobs" aria-hidden="true" />
@@ -1701,7 +1963,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       </nav>
 
       {currentPage === 'runbook' ? (
-        <RunbookPage parts={state.parts} canEdit={canEdit} />
+        <RunbookPage parts={state.parts} canEdit={canEditRunbook} />
       ) : null}
 
       {currentPage === 'blueprint' ? (
@@ -2565,98 +2827,254 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       ) : null}
 
       {isAdmin ? (
-      <section className="panel cloud-panel admin-panel">
+      <section className="panel cloud-panel admin-panel users-panel">
         <div className="panel-header cloud-panel-header">
           <div>
-            <p className="panel-kicker">Admin roles</p>
-            <h2>Manage who can edit</h2>
+            <p className="panel-kicker">Users &amp; roles</p>
+            <h2>Manage users, assign roles, and audit access</h2>
             <p className="panel-note">
-              Only admins can change the shared cloud data. All other signed-in users see a read-only view.
+              Add, edit, or remove users and assign them a role. Only admins can change the shared cloud data;
+              editors can update the runbook; viewers have read-only access.
               {isSuper ? ' You are the super-admin and can always manage this list.' : ''}
             </p>
           </div>
-          <div className="cloud-actions admin-actions">
-            <form
-              className="admin-add-form"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                const email = newAdminEmail.trim().toLowerCase();
-                if (!email) return;
-                if (adminEmails.includes(email) || email === SUPER_ADMIN_EMAIL) {
-                  setNewAdminEmail('');
-                  return;
-                }
-                setAdminBusy(true);
-                setAdminError(null);
-                try {
-                  await adminStore.saveAdmins([...adminEmails, email]);
-                  setNewAdminEmail('');
-                } catch (error) {
-                  console.error('Add admin failed:', error);
-                  setAdminError(error?.message ?? String(error));
-                } finally {
-                  setAdminBusy(false);
-                }
-              }}
+        </div>
+
+        {/* Add user form */}
+        <form className="user-add-form" onSubmit={addUser}>
+          <label className="user-add-field">
+            <span>Email</span>
+            <input
+              type="email"
+              value={userDraft.email}
+              onChange={(e) => setUserDraft((d) => ({ ...d, email: e.target.value }))}
+              placeholder="someone@atea.no"
+              disabled={adminBusy || !userStore.enabled}
+              required
+            />
+          </label>
+          <label className="user-add-field">
+            <span>Display name</span>
+            <input
+              type="text"
+              value={userDraft.displayName}
+              onChange={(e) => setUserDraft((d) => ({ ...d, displayName: e.target.value }))}
+              placeholder="Optional friendly name"
+              disabled={adminBusy || !userStore.enabled}
+            />
+          </label>
+          <label className="user-add-field">
+            <span>Role</span>
+            <select
+              value={userDraft.role}
+              onChange={(e) => setUserDraft((d) => ({ ...d, role: e.target.value }))}
+              disabled={adminBusy || !userStore.enabled}
             >
-              <input
-                type="email"
-                value={newAdminEmail}
-                onChange={(event) => setNewAdminEmail(event.target.value)}
-                placeholder="someone@atea.no"
-                disabled={adminBusy || !adminStore.enabled}
-              />
-              <button
-                type="submit"
-                className="secondary-button"
-                disabled={adminBusy || !adminStore.enabled || !newAdminEmail.trim()}
-              >
-                {adminBusy ? 'Saving…' : 'Add admin'}
-              </button>
-            </form>
-            <div className="admin-list">
-              <div className="admin-list-row">
-                <span className="pill cloud-user-pill">Super-admin</span>
-                <span>{SUPER_ADMIN_EMAIL}</span>
-              </div>
-              {adminEmails.length === 0 ? (
-                <p className="catalog-empty">No additional admins yet.</p>
+              {Object.entries(ROLES).map(([key, meta]) => (
+                <option key={key} value={key}>{meta.label}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="primary-button"
+            disabled={adminBusy || !userStore.enabled || !userDraft.email.trim()}
+          >
+            {adminBusy ? 'Saving…' : 'Add user'}
+          </button>
+        </form>
+
+        {/* Role legend */}
+        <div className="user-role-legend">
+          {Object.entries(ROLES).map(([key, meta]) => (
+            <span key={key} className={`user-role-pill role-${key}`}>
+              <strong>{meta.label}</strong> — {meta.description}
+            </span>
+          ))}
+        </div>
+
+        {/* Users table */}
+        <div className="user-table-wrap">
+          <table className="user-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Display name</th>
+                <th>Role</th>
+                <th>Added by</th>
+                <th>Added at</th>
+                <th aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {usersForDisplay.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="user-table-empty">No users yet. Add the first one above.</td>
+                </tr>
               ) : (
-                adminEmails.map((email) => (
-                  <div className="admin-list-row" key={email}>
-                    <span>{email}</span>
-                    <button
-                      type="button"
-                      className="danger-button"
-                      disabled={adminBusy}
-                      onClick={async () => {
-                        if (!window.confirm(`Remove admin rights for ${email}?`)) {
-                          return;
-                        }
-                        setAdminBusy(true);
-                        setAdminError(null);
-                        try {
-                          await adminStore.saveAdmins(adminEmails.filter((entry) => entry !== email));
-                        } catch (error) {
-                          console.error('Remove admin failed:', error);
-                          setAdminError(error?.message ?? String(error));
-                        } finally {
-                          setAdminBusy(false);
-                        }
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))
+                usersForDisplay.map((user) => {
+                  const isEditing = editingUserEmail === user.email;
+                  return (
+                    <tr key={user.email} className={`role-row-${user.role} ${user.isSuper ? 'is-super' : ''}`}>
+                      <td className="user-email">
+                        {user.email}
+                        {user.isSuper ? <span className="pill cloud-user-pill">Super</span> : null}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editingUserDraft?.displayName ?? ''}
+                            onChange={(e) => setEditingUserDraft((d) => ({ ...d, displayName: e.target.value }))}
+                            disabled={adminBusy}
+                          />
+                        ) : (
+                          user.displayName || <span className="user-empty-cell">—</span>
+                        )}
+                      </td>
+                      <td>
+                        {user.isSuper ? (
+                          <span className={`user-role-badge role-${user.role}`}>{ROLES[user.role]?.label ?? user.role}</span>
+                        ) : isEditing ? (
+                          <select
+                            value={editingUserDraft?.role ?? user.role}
+                            onChange={(e) => setEditingUserDraft((d) => ({ ...d, role: e.target.value }))}
+                            disabled={adminBusy}
+                          >
+                            {Object.entries(ROLES).map(([key, meta]) => (
+                              <option key={key} value={key}>{meta.label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <select
+                            value={user.role}
+                            onChange={(e) => updateUserRole(user.email, e.target.value)}
+                            disabled={adminBusy}
+                            className={`role-${user.role}`}
+                            title="Change role"
+                          >
+                            {Object.entries(ROLES).map(([key, meta]) => (
+                              <option key={key} value={key}>{meta.label}</option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                      <td className="user-meta">{user.addedBy || <span className="user-empty-cell">—</span>}</td>
+                      <td className="user-meta">
+                        {user.addedAt ? new Date(user.addedAt).toLocaleString() : <span className="user-empty-cell">—</span>}
+                      </td>
+                      <td className="user-actions">
+                        {user.isSuper ? null : isEditing ? (
+                          <>
+                            <button type="button" className="secondary-button" onClick={saveEditUser} disabled={adminBusy}>Save</button>
+                            <button type="button" className="secondary-button" onClick={cancelEditUser} disabled={adminBusy}>Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" className="secondary-button" onClick={() => startEditUser(user)} disabled={adminBusy}>Edit</button>
+                            <button type="button" className="danger-button" onClick={() => deleteUser(user.email)} disabled={adminBusy}>Delete</button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
-              {adminError ? (
-                <span className="cloud-status-error" title={adminError}>
-                  {adminError}
-                </span>
-              ) : null}
-            </div>
+            </tbody>
+          </table>
+        </div>
+
+        {adminError ? (
+          <span className="cloud-status-error" title={adminError}>{adminError}</span>
+        ) : null}
+      </section>
+      ) : null}
+
+      {isAdmin ? (
+      <section className="panel stats-panel">
+        <div className="panel-header">
+          <div>
+            <p className="panel-kicker">Statistics</p>
+            <h2>Live view of users, blueprint, and runbook</h2>
+            <p className="panel-note">
+              Updates in real time from the cloud. Useful for spotting bottlenecks and tracking progress at a glance.
+            </p>
           </div>
+        </div>
+
+        <div className="stats-grid">
+          {/* User stats */}
+          <article className="stats-card stats-card-users">
+            <h3>Users</h3>
+            <div className="stats-big-number">{adminStats.totalUsers}</div>
+            <div className="stats-sub">total registered</div>
+            <div className="stats-breakdown">
+              <div className="stats-line">
+                <span className={`stats-dot role-admin`} />
+                <span>Admins</span>
+                <strong>{adminStats.roleCounts.admin}</strong>
+              </div>
+              <div className="stats-line">
+                <span className={`stats-dot role-editor`} />
+                <span>Editors</span>
+                <strong>{adminStats.roleCounts.editor}</strong>
+              </div>
+              <div className="stats-line">
+                <span className={`stats-dot role-viewer`} />
+                <span>Viewers</span>
+                <strong>{adminStats.roleCounts.viewer}</strong>
+              </div>
+            </div>
+          </article>
+
+          {/* Blueprint stats */}
+          <article className="stats-card stats-card-blueprint">
+            <h3>Blueprint map</h3>
+            <div className="stats-big-number">{adminStats.blueprint.totalParts}</div>
+            <div className="stats-sub">parts in the atlas</div>
+            <div className="stats-breakdown">
+              <div className="stats-line"><span>Source roots</span><strong>{adminStats.blueprint.rootCount}</strong></div>
+              <div className="stats-line"><span>Source links</span><strong>{adminStats.blueprint.sourceLinkCount}</strong></div>
+              <div className="stats-line"><span>Dependency links</span><strong>{adminStats.blueprint.dependencyLinkCount}</strong></div>
+              <div className="stats-line"><span>Owners</span><strong>{adminStats.blueprint.ownerCount}</strong></div>
+              <div className="stats-line"><span>Residences</span><strong>{adminStats.blueprint.residenceCount}</strong></div>
+            </div>
+          </article>
+
+          {/* Runbook stats */}
+          <article className="stats-card stats-card-runbook">
+            <h3>Runbook progress</h3>
+            <div className="stats-big-number">{adminStats.runbook.donePct}%</div>
+            <div className="stats-sub">complete ({adminStats.runbook.done}/{adminStats.runbook.totalSteps})</div>
+            <div className="stats-progress-bar" role="progressbar" aria-valuenow={adminStats.runbook.donePct} aria-valuemin={0} aria-valuemax={100}>
+              <div className="stats-progress-fill" style={{ width: `${adminStats.runbook.donePct}%` }} />
+            </div>
+            <div className="stats-breakdown">
+              <div className="stats-line"><span className="stats-dot stats-dot-done" /><span>Done</span><strong>{adminStats.runbook.done}</strong></div>
+              <div className="stats-line"><span className="stats-dot stats-dot-wip" /><span>In progress</span><strong>{adminStats.runbook.inProgress}</strong></div>
+              <div className="stats-line"><span className="stats-dot stats-dot-skipped" /><span>Skipped</span><strong>{adminStats.runbook.skipped}</strong></div>
+              <div className="stats-line stats-line-warn"><span className="stats-dot stats-dot-overdue" /><span>Overdue</span><strong>{adminStats.runbook.overdue}</strong></div>
+              <div className="stats-line"><span>Assigned</span><strong>{adminStats.runbook.withAssignee}</strong></div>
+            </div>
+          </article>
+
+          {/* Top assignees */}
+          <article className="stats-card stats-card-assignees">
+            <h3>Top assignees</h3>
+            {adminStats.topAssignees.length === 0 ? (
+              <p className="stats-empty">No assignees yet. Assign people to runbook steps to see the leaderboard.</p>
+            ) : (
+              <ol className="stats-assignee-list">
+                {adminStats.topAssignees.map(([name, count], idx) => (
+                  <li key={name}>
+                    <span className="stats-rank">{idx + 1}.</span>
+                    <span className="stats-assignee-name">{name}</span>
+                    <span className="stats-assignee-count">{count} {count === 1 ? 'step' : 'steps'}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </article>
         </div>
       </section>
       ) : null}

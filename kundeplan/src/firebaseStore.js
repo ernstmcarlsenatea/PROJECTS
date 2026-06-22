@@ -5,6 +5,31 @@ import { doc, getDoc, getFirestore, onSnapshot, serverTimestamp, setDoc } from '
 // admins document exists yet, so it can grant admin status to other users.
 export const SUPER_ADMIN_EMAIL = 'ernst.magne.carlsen@atea.no';
 const ADMINS_DOC_PATH = ['kundeplanAdmins', 'list'];
+const EDITORS_DOC_PATH = ['kundeplanEditors', 'list'];
+const USERS_DOC_PATH = ['kundeplanUsers', 'list'];
+
+// Available roles. Order = display/sort order.
+export const ROLES = {
+  admin: {
+    label: 'Admin',
+    description: 'Full access — edit blueprint, runbook, and manage users.',
+    sortOrder: 0,
+  },
+  editor: {
+    label: 'Editor',
+    description: 'Edit runbook status, notes, assignee, and due dates.',
+    sortOrder: 1,
+  },
+  viewer: {
+    label: 'Viewer',
+    description: 'Read-only access — can browse but not modify anything.',
+    sortOrder: 2,
+  },
+};
+
+export function isValidRole(role) {
+  return Object.prototype.hasOwnProperty.call(ROLES, role);
+}
 
 function normalizeEmail(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -12,6 +37,18 @@ function normalizeEmail(value) {
 
 export function isSuperAdmin(email) {
   return normalizeEmail(email) === SUPER_ADMIN_EMAIL;
+}
+
+// Resolve role for a given email. Super-admin always = admin. Otherwise look
+// up in the supplied users array; default to 'viewer' for trusted but
+// unregistered users.
+export function getUserRole(email, users) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+  if (normalized === SUPER_ADMIN_EMAIL) return 'admin';
+  if (!Array.isArray(users)) return 'viewer';
+  const entry = users.find((u) => normalizeEmail(u?.email) === normalized);
+  return entry?.role && isValidRole(entry.role) ? entry.role : 'viewer';
 }
 
 export function computeIsAdmin(email, adminEmails) {
@@ -330,6 +367,98 @@ export function createRunbookStore() {
         }
         throw error;
       }
+    },
+  };
+}
+
+// Read + normalize the users array from a raw Firestore doc.
+function readUsersData(data) {
+  const raw = Array.isArray(data?.users) ? data.users : [];
+  const seen = new Set();
+  const cleaned = [];
+  for (const u of raw) {
+    const email = normalizeEmail(u?.email);
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    cleaned.push({
+      email,
+      role: isValidRole(u?.role) ? u.role : 'viewer',
+      displayName: typeof u?.displayName === 'string' ? u.displayName.trim() : '',
+      addedAt: u?.addedAt ?? null,
+      addedBy: typeof u?.addedBy === 'string' ? u.addedBy : '',
+    });
+  }
+  return cleaned;
+}
+
+// Full user management store. Reads from kundeplanUsers/list and synchronizes
+// kundeplanAdmins/list and kundeplanEditors/list so the firestore.rules can
+// continue using simple email-in-array checks for permission decisions.
+export function createUserStore() {
+  const db = getDb();
+
+  if (!db) {
+    return {
+      enabled: false,
+      async loadUsers() {
+        return [];
+      },
+      subscribeUsers() {
+        return () => {};
+      },
+      async saveUsers() {
+        throw new Error('Firebase is not configured.');
+      },
+    };
+  }
+
+  const usersRef = doc(db, USERS_DOC_PATH[0], USERS_DOC_PATH[1]);
+  const adminsRef = doc(db, ADMINS_DOC_PATH[0], ADMINS_DOC_PATH[1]);
+  const editorsRef = doc(db, EDITORS_DOC_PATH[0], EDITORS_DOC_PATH[1]);
+
+  return {
+    enabled: true,
+    async loadUsers() {
+      try {
+        const snap = await getDoc(usersRef);
+        return snap.exists() ? readUsersData(snap.data()) : [];
+      } catch (error) {
+        if (isMissingDefaultDatabaseError(error)) return [];
+        throw error;
+      }
+    },
+    subscribeUsers(onChange, onError) {
+      return onSnapshot(
+        usersRef,
+        (snap) => onChange(snap.exists() ? readUsersData(snap.data()) : []),
+        (error) => {
+          if (isMissingDefaultDatabaseError(error)) return;
+          if (typeof onError === 'function') onError(error);
+          else console.error('Users subscription failed:', error);
+        },
+      );
+    },
+    async saveUsers(users) {
+      const cleaned = readUsersData({ users });
+      await setDoc(
+        usersRef,
+        { users: cleaned, updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+      // Sync legacy lists used by firestore.rules.
+      const adminEmails = cleaned.filter((u) => u.role === 'admin').map((u) => u.email);
+      const editorEmails = cleaned.filter((u) => u.role === 'editor').map((u) => u.email);
+      await setDoc(
+        adminsRef,
+        { emails: adminEmails, updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+      await setDoc(
+        editorsRef,
+        { emails: editorEmails, updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+      return cleaned;
     },
   };
 }

@@ -50,11 +50,27 @@ service cloud.firestore {
         : [];
     }
 
+    function editorsList() {
+      return exists(/databases/$(database)/documents/kundeplanEditors/list)
+        ? get(/databases/$(database)/documents/kundeplanEditors/list).data.emails
+        : [];
+    }
+
     function isAdminUser() {
       return isTrustedUser()
         && (
           callerEmail() == superAdminEmail()
           || callerEmail() in adminsList()
+        );
+    }
+
+    // Editor = admin OR explicitly listed editor. Editors can write the
+    // runbook but cannot edit the blueprint or manage users.
+    function isEditorUser() {
+      return isTrustedUser()
+        && (
+          isAdminUser()
+          || callerEmail() in editorsList()
         );
     }
 
@@ -72,11 +88,24 @@ service cloud.firestore {
       allow write: if isAdminUser();
     }
 
-    // Shared runbook config (per-step status, notes, assignee, due date).
-    // Trusted users read; only admins write.
-    match /kundeplanRunbook/{docId} {
+    // Editor list document. Trusted users read; admins write.
+    match /kundeplanEditors/{docId} {
       allow read: if isTrustedUser();
       allow write: if isAdminUser();
+    }
+
+    // Full user registry with roles, display name, audit fields. Trusted
+    // users read (so the UI can show roles); admins write.
+    match /kundeplanUsers/{docId} {
+      allow read: if isTrustedUser();
+      allow write: if isAdminUser();
+    }
+
+    // Shared runbook config (per-step status, notes, assignee, due date).
+    // Trusted users read; admins AND editors may write.
+    match /kundeplanRunbook/{docId} {
+      allow read: if isTrustedUser();
+      allow write: if isEditorUser();
     }
 
     // Default deny everything else.
