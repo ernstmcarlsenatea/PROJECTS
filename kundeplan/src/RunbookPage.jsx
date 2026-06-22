@@ -139,7 +139,7 @@ function formatDate(value) {
   return value;
 }
 
-export function RunbookPage({ parts, canEdit = false, onAuditEvent }) {
+export function RunbookPage({ parts, canEdit = false, onAuditEvent, planId }) {
   const [config, setConfig] = useState(() => loadRunbookConfig());
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterOwner, setFilterOwner] = useState('all');
@@ -151,7 +151,7 @@ export function RunbookPage({ parts, canEdit = false, onAuditEvent }) {
   const [cloudStatus, setCloudStatus] = useState('idle'); // idle | syncing | synced | offline | error
   const [cloudError, setCloudError] = useState(null);
 
-  const runbookStore = useMemo(() => createRunbookStore(), []);
+  const runbookStore = useMemo(() => createRunbookStore({ planId }), [planId]);
   const cloudInitializedRef = useRef(false);
   const cloudBaselineRef = useRef(null);
   const lastSaveRef = useRef(null);

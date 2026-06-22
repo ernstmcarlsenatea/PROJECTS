@@ -3,7 +3,7 @@ import { toCanvas as htmlToCanvas } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
-import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, createAuditStore, AUDIT_EVENT_TYPES, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, createAuditStore, createPlansStore, AUDIT_EVENT_TYPES, DEFAULT_PLAN_ID, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
 import { FEATURE_FLAGS, SCHEMA_VERSION } from './featureFlags.js';
 
 // Phase 1: lazy-load secondary pages so they don't bloat the initial bundle.
@@ -34,6 +34,26 @@ const ANCHOR_LABELS = {
   bottom: 'Bottom',
 };
 const CLOUD_MIGRATION_KEY_PREFIX = 'kundeplan-cloud-migrated-v1';
+const ACTIVE_PLAN_STORAGE_KEY = 'kundeplan-active-plan-id-v1';
+
+function getActivePlanIdFromStorage() {
+  if (!FEATURE_FLAGS.multiPlan) return DEFAULT_PLAN_ID;
+  try {
+    const raw = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_PLAN_ID;
+}
+
+function setActivePlanIdInStorage(planId) {
+  try {
+    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, planId || DEFAULT_PLAN_ID);
+  } catch {
+    /* ignore */
+  }
+}
 
 function getCloudMigrationKey(userKey) {
   return `${CLOUD_MIGRATION_KEY_PREFIX}:${userKey ?? 'public'}`;
@@ -358,17 +378,22 @@ function buildStructureSummary(parts) {
 
 function App({ auth = { enabled: false, activeAccount: null, signOut: null, publicAccess: false } }) {
   const activeAccount = auth.activeAccount ?? null;
+  // Phase 4: active plan id is read from localStorage at mount. Switching
+  // plans triggers a full page reload so all derived state (cloud doc refs,
+  // local cache, subscriptions) reinitialises cleanly.
+  const [activePlanId] = useState(() => getActivePlanIdFromStorage());
   const cloudStore = useMemo(
-    () => createCloudStore(auth),
-    [auth.enabled, auth.activeAccount?.username, auth.activeAccount?.homeAccountId],
+    () => createCloudStore(auth, { planId: activePlanId }),
+    [auth.enabled, auth.activeAccount?.username, auth.activeAccount?.homeAccountId, activePlanId],
   );
   const [state, setState] = useState(() => loadState());
   const [cloudActionStatus, setCloudActionStatus] = useState('idle');
   const [cloudActionError, setCloudActionError] = useState(null);
   const adminStore = useMemo(() => createAdminStore(), []);
   const userStore = useMemo(() => createUserStore(), []);
-  const statsRunbookStore = useMemo(() => createRunbookStore(), []);
+  const statsRunbookStore = useMemo(() => createRunbookStore({ planId: activePlanId }), [activePlanId]);
   const auditStore = useMemo(() => createAuditStore(), []);
+  const plansStore = useMemo(() => createPlansStore(), []);
   const [adminEmails, setAdminEmails] = useState([]);
   const [adminError, setAdminError] = useState(null);
   const [adminBusy, setAdminBusy] = useState(false);
@@ -379,6 +404,13 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [runbookConfigForStats, setRunbookConfigForStats] = useState({});
   const [auditEvents, setAuditEvents] = useState([]);
   const [auditLoaded, setAuditLoaded] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [plansLoaded, setPlansLoaded] = useState(false);
+  const [planDraft, setPlanDraft] = useState({ name: '', description: '' });
+  const [editingPlanId, setEditingPlanId] = useState(null);
+  const [editingPlanDraft, setEditingPlanDraft] = useState({ name: '', description: '' });
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planError, setPlanError] = useState(null);
 
   const callerEmail = activeAccount?.username ?? null;
 
@@ -400,7 +432,9 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             email: callerEmail,
             displayName: activeAccount?.name ?? '',
           },
-          details,
+          // Phase 4: stamp every event with the active plan id so the
+          // Activity panel can be filtered by plan later.
+          details: { ...(details && typeof details === 'object' ? details : {}), planId: activePlanId },
         });
       } catch (err) {
         // Audit must never break a foreground operation.
@@ -408,7 +442,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         return null;
       }
     };
-  }, [auditStore, callerEmail, activeAccount?.name]);
+  }, [auditStore, callerEmail, activeAccount?.name, activePlanId]);
 
   // Phase 3 audit log: subscribe to the most recent events for the Activity
   // panel. Subscription is created once per store and only when the flag is on.
@@ -432,6 +466,40 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, [auditStore]);
+
+  // Phase 4 multi-plan: subscribe to the plan registry. Default plan is
+  // implicit and not stored in the registry, so the registry only ever
+  // contains the additional plans the workspace has created.
+  useEffect(() => {
+    if (!FEATURE_FLAGS.multiPlan || !plansStore.enabled) {
+      setPlansLoaded(true);
+      return undefined;
+    }
+    const unsubscribe = plansStore.subscribePlans(
+      (next) => {
+        setPlans(next);
+        setPlansLoaded(true);
+      },
+      (error) => {
+        console.warn('Plans subscription failed:', error);
+        setPlansLoaded(true);
+      },
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [plansStore]);
+
+  // List of all plans visible in the selector, including the implicit default.
+  const visiblePlans = useMemo(() => {
+    const base = [{ id: DEFAULT_PLAN_ID, name: 'Default plan', description: '', createdAt: null, createdBy: '' }];
+    return [...base, ...plans];
+  }, [plans]);
+
+  const activePlan = useMemo(
+    () => visiblePlans.find((p) => p.id === activePlanId) ?? visiblePlans[0],
+    [visiblePlans, activePlanId],
+  );
 
   // Effective users: prefer the new user registry; fall back to legacy admin
   // list so existing installations keep working before a save happens.
@@ -1863,6 +1931,130 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   }
 
   // ============================================================
+  // PLAN MANAGEMENT (Phase 4)
+  // ============================================================
+
+  function switchPlan(nextPlanId) {
+    const target = nextPlanId || DEFAULT_PLAN_ID;
+    if (target === activePlanId) return;
+    // Persist the selection and reload so every store, subscription, and
+    // local cache reinitialises cleanly against the new plan's doc id.
+    setActivePlanIdInStorage(target);
+    window.location.reload();
+  }
+
+  async function createPlan(event) {
+    event?.preventDefault?.();
+    if (!isAdmin) return;
+    const name = (planDraft.name || '').trim();
+    if (!name) {
+      window.alert('Plan name is required.');
+      return;
+    }
+    setPlanBusy(true);
+    setPlanError(null);
+    try {
+      const entry = await plansStore.createPlan({
+        name,
+        description: (planDraft.description || '').trim(),
+        createdBy: callerEmail ?? '',
+      });
+      recordAudit(
+        'plan.create',
+        `Created plan \u201c${entry.name}\u201d`,
+        { planId: entry.id, name: entry.name },
+      );
+      setPlanDraft({ name: '', description: '' });
+      // Offer to switch immediately so the admin can populate the new plan.
+      if (window.confirm(`Plan "${entry.name}" created. Switch to it now?`)) {
+        switchPlan(entry.id);
+      }
+    } catch (error) {
+      console.error('Create plan failed:', error);
+      setPlanError(error?.message ?? String(error));
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  function startEditPlan(plan) {
+    setEditingPlanId(plan.id);
+    setEditingPlanDraft({ name: plan.name ?? '', description: plan.description ?? '' });
+  }
+
+  function cancelEditPlan() {
+    setEditingPlanId(null);
+    setEditingPlanDraft({ name: '', description: '' });
+  }
+
+  async function saveEditPlan() {
+    if (!isAdmin || !editingPlanId) return;
+    const previous = plans.find((p) => p.id === editingPlanId);
+    const name = (editingPlanDraft.name || '').trim();
+    if (!name) {
+      setPlanError('Plan name is required.');
+      return;
+    }
+    setPlanBusy(true);
+    setPlanError(null);
+    try {
+      await plansStore.updatePlan(editingPlanId, {
+        name,
+        description: (editingPlanDraft.description || '').trim(),
+      });
+      const changes = [];
+      if (previous && previous.name !== name) changes.push(`name \u201c${previous.name}\u201d \u2192 \u201c${name}\u201d`);
+      if (previous && (previous.description || '') !== (editingPlanDraft.description || '').trim()) changes.push('description updated');
+      if (changes.length > 0) {
+        recordAudit(
+          'plan.update',
+          `Updated plan \u201c${name}\u201d: ${changes.join(', ')}`,
+          { planId: editingPlanId, previous: { name: previous?.name, description: previous?.description }, next: { name, description: (editingPlanDraft.description || '').trim() } },
+        );
+      }
+      cancelEditPlan();
+    } catch (error) {
+      console.error('Save plan failed:', error);
+      setPlanError(error?.message ?? String(error));
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  async function deletePlan(planId) {
+    if (!isAdmin) return;
+    if (planId === DEFAULT_PLAN_ID) {
+      window.alert('Cannot delete the default plan.');
+      return;
+    }
+    if (planId === activePlanId) {
+      window.alert('Switch to a different plan before deleting this one.');
+      return;
+    }
+    const target = plans.find((p) => p.id === planId);
+    if (!target) return;
+    const ok = window.confirm(
+      `Remove plan \u201c${target.name}\u201d from the registry?\n\nThe plan\'s blueprint and runbook data stay in Firestore so this is reversible \u2014 re-create a plan with the same id or restore via Firebase console. Only the registry entry is removed here.`,
+    );
+    if (!ok) return;
+    setPlanBusy(true);
+    setPlanError(null);
+    try {
+      await plansStore.deletePlan(planId);
+      recordAudit(
+        'plan.delete',
+        `Removed plan \u201c${target.name}\u201d from registry (data preserved)`,
+        { planId, name: target.name },
+      );
+    } catch (error) {
+      console.error('Delete plan failed:', error);
+      setPlanError(error?.message ?? String(error));
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  // ============================================================
   // USER MANAGEMENT
   // ============================================================
 
@@ -2129,6 +2321,20 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           </p>
         </div>
         <div className="hero-actions">
+          {FEATURE_FLAGS.multiPlan && visiblePlans.length > 1 ? (
+            <label className="plan-selector" title="Active plan — switching reloads the page">
+              <span className="plan-selector-label">Plan</span>
+              <select
+                value={activePlanId}
+                onChange={(e) => switchPlan(e.target.value)}
+                className="plan-selector-select"
+              >
+                {visiblePlans.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <button
             type="button"
             className="version-save-button"
@@ -2199,7 +2405,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
       {currentPage === 'runbook' ? (
         <Suspense fallback={<PageLoadingFallback label="runbook" />}>
-          <RunbookPage parts={state.parts} canEdit={canEditRunbook} onAuditEvent={recordAudit} />
+          <RunbookPage parts={state.parts} canEdit={canEditRunbook} onAuditEvent={recordAudit} planId={activePlanId} />
         </Suspense>
       ) : null}
 
@@ -3121,6 +3327,155 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             ) : null}
           </div>
         </div>
+      </section>
+      ) : null}
+
+      {isAdmin && FEATURE_FLAGS.multiPlan ? (
+      <section className="panel cloud-panel admin-panel plans-panel">
+        <div className="panel-header cloud-panel-header">
+          <div>
+            <p className="panel-kicker">Plans</p>
+            <h2>Manage customer plans</h2>
+            <p className="panel-note">
+              Each plan has its own blueprint and runbook. The default plan is the existing shared
+              workspace. Other plans are stored separately so you can keep multiple customers in
+              parallel without overwriting each other. Users, templates, and audit history are global.
+              Currently active: <strong>{activePlan?.name ?? activePlanId}</strong>.
+            </p>
+          </div>
+        </div>
+
+        {!plansStore.enabled ? (
+          <p className="panel-note">Firebase is not configured — multi-plan unavailable.</p>
+        ) : (
+          <>
+            <form className="plan-add-form" onSubmit={createPlan}>
+              <label className="plan-add-field">
+                <span>Name</span>
+                <input
+                  type="text"
+                  value={planDraft.name}
+                  onChange={(e) => setPlanDraft((d) => ({ ...d, name: e.target.value }))}
+                  placeholder="e.g. Customer Acme onboarding"
+                  disabled={planBusy}
+                  required
+                />
+              </label>
+              <label className="plan-add-field plan-add-field-wide">
+                <span>Description</span>
+                <input
+                  type="text"
+                  value={planDraft.description}
+                  onChange={(e) => setPlanDraft((d) => ({ ...d, description: e.target.value }))}
+                  placeholder="Optional"
+                  disabled={planBusy}
+                />
+              </label>
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={planBusy || !planDraft.name.trim()}
+              >
+                {planBusy ? 'Creating…' : 'Create plan'}
+              </button>
+            </form>
+
+            <div className="plan-table-wrap">
+              <table className="plan-table">
+                <thead>
+                  <tr>
+                    <th>Plan</th>
+                    <th>Description</th>
+                    <th>Created by</th>
+                    <th>Created at</th>
+                    <th aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {visiblePlans.map((plan) => {
+                    const isDefault = plan.id === DEFAULT_PLAN_ID;
+                    const isActive = plan.id === activePlanId;
+                    const isEditing = editingPlanId === plan.id;
+                    return (
+                      <tr key={plan.id} className={isActive ? 'plan-row-active' : ''}>
+                        <td className="plan-name">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editingPlanDraft.name}
+                              onChange={(e) => setEditingPlanDraft((d) => ({ ...d, name: e.target.value }))}
+                              disabled={planBusy}
+                            />
+                          ) : (
+                            <>
+                              <strong>{plan.name}</strong>
+                              {isDefault ? <span className="pill plan-default-pill">Default</span> : null}
+                              {isActive ? <span className="pill plan-active-pill">Active</span> : null}
+                            </>
+                          )}
+                        </td>
+                        <td className="plan-desc">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editingPlanDraft.description}
+                              onChange={(e) => setEditingPlanDraft((d) => ({ ...d, description: e.target.value }))}
+                              disabled={planBusy}
+                            />
+                          ) : (
+                            plan.description || <span className="user-empty-cell">—</span>
+                          )}
+                        </td>
+                        <td className="user-meta">{plan.createdBy || <span className="user-empty-cell">—</span>}</td>
+                        <td className="user-meta">
+                          {plan.createdAt ? new Date(plan.createdAt).toLocaleString() : <span className="user-empty-cell">—</span>}
+                        </td>
+                        <td className="user-actions">
+                          {isDefault ? (
+                            !isActive ? (
+                              <button type="button" className="secondary-button" onClick={() => switchPlan(plan.id)}>
+                                Switch
+                              </button>
+                            ) : null
+                          ) : isEditing ? (
+                            <>
+                              <button type="button" className="secondary-button" onClick={saveEditPlan} disabled={planBusy}>Save</button>
+                              <button type="button" className="secondary-button" onClick={cancelEditPlan} disabled={planBusy}>Cancel</button>
+                            </>
+                          ) : (
+                            <>
+                              {!isActive ? (
+                                <button type="button" className="secondary-button" onClick={() => switchPlan(plan.id)} disabled={planBusy}>
+                                  Switch
+                                </button>
+                              ) : null}
+                              <button type="button" className="secondary-button" onClick={() => startEditPlan(plan)} disabled={planBusy}>
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="danger-button"
+                                onClick={() => deletePlan(plan.id)}
+                                disabled={planBusy || isActive}
+                                title={isActive ? 'Switch away from this plan first' : 'Remove from registry (data preserved)'}
+                              >
+                                Remove
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {planError ? (
+              <span className="cloud-status-error" title={planError}>{planError}</span>
+            ) : null}
+          </>
+        )}
       </section>
       ) : null}
 

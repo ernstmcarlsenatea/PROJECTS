@@ -22,6 +22,19 @@ const USERS_DOC_PATH = ['kundeplanUsers', 'list'];
 const TEMPLATES_DOC_PATH = ['kundeplanTemplates', 'list'];
 const AUDIT_COLLECTION = 'kundeplanAudit';
 const AUDIT_SCHEMA_VERSION = 1;
+const PLANS_DOC_PATH = ['kundeplanPlans', 'registry'];
+const PLANS_SCHEMA_VERSION = 1;
+
+// Phase 4: the "default" plan continues to read/write the existing
+// kundeplanStates/shared and kundeplanRunbook/shared docs so no migration is
+// needed for existing installations. Any other plan uses a doc id derived
+// from its planId.
+export const DEFAULT_PLAN_ID = 'default';
+
+export function getPlanDocKey(planId) {
+  if (!planId || planId === DEFAULT_PLAN_ID) return SHARED_DOC_KEY;
+  return `plan_${sanitizeKey(String(planId))}`;
+}
 
 // Available roles. Order = display/sort order.
 export const ROLES = {
@@ -124,14 +137,18 @@ function isMissingDefaultDatabaseError(error) {
   return error?.code === 'not-found' || message.includes("Database '(default)' not found");
 }
 
-export function createCloudStore(auth) {
+export function createCloudStore(auth, options = {}) {
   const db = getDb();
-  const userKey = getUserKey(auth);
+  const planId = options?.planId ?? DEFAULT_PLAN_ID;
+  // For the default plan we keep using the legacy shared key so existing
+  // installations don't migrate. Non-default plans use a derived id.
+  const userKey = getPlanDocKey(planId);
 
   if (!db) {
     return {
       enabled: false,
       userKey,
+      planId,
       reason: 'missing_config',
       async loadSnapshot() {
         return null;
@@ -151,6 +168,7 @@ export function createCloudStore(auth) {
   return {
     enabled: true,
     userKey,
+    planId,
     reason: null,
     async loadSnapshot() {
       if (!cloudAvailable) {
@@ -302,13 +320,17 @@ export function createAdminStore() {
 
 // Shared runbook config store. Keeps per-step state (status, notes, assignee,
 // due date) synced across all signed-in users. Trusted users read; admins write.
-export function createRunbookStore() {
+// Phase 4: an optional { planId } selects a per-plan doc id. The default plan
+// keeps using the legacy 'shared' key so existing data is unchanged.
+export function createRunbookStore(options = {}) {
   const db = getDb();
-  const docKey = SHARED_DOC_KEY;
+  const planId = options?.planId ?? DEFAULT_PLAN_ID;
+  const docKey = getPlanDocKey(planId);
 
   if (!db) {
     return {
       enabled: false,
+      planId,
       async loadConfig() {
         return null;
       },
@@ -326,6 +348,7 @@ export function createRunbookStore() {
 
   return {
     enabled: true,
+    planId,
     async loadConfig() {
       if (!cloudAvailable) return null;
       try {
@@ -671,6 +694,171 @@ export function createAuditStore() {
           else console.warn('Audit subscription failed:', error);
         },
       );
+    },
+  };
+}
+
+// Phase 4 multi-plan registry. Stores the list of named plans the workspace
+// knows about. The 'default' plan is always implicit and never appears in
+// this list — it maps to the legacy 'shared' doc id. Only admins may write.
+function readPlansData(data) {
+  const raw = Array.isArray(data?.plans) ? data.plans : [];
+  const seen = new Set();
+  const cleaned = [];
+  for (const p of raw) {
+    if (!p || typeof p !== 'object') continue;
+    const id = typeof p.id === 'string' ? sanitizeKey(p.id) : '';
+    if (!id || id === DEFAULT_PLAN_ID || seen.has(id)) continue;
+    seen.add(id);
+    cleaned.push({
+      id,
+      name: typeof p.name === 'string' ? p.name.trim().slice(0, 120) : '',
+      description: typeof p.description === 'string' ? p.description.trim().slice(0, 500) : '',
+      createdAt: p.createdAt ?? null,
+      createdBy: typeof p.createdBy === 'string' ? p.createdBy : '',
+    });
+  }
+  return cleaned;
+}
+
+export function generatePlanId(name) {
+  // Make a stable, URL/Firestore-safe ID with a short random suffix so renames
+  // don't break anything but accidental duplicates are still possible.
+  const base = sanitizeKey(String(name || 'plan').toLowerCase().replace(/\s+/g, '-')).slice(0, 40);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${base || 'plan'}_${rand}`;
+}
+
+export function createPlansStore() {
+  const db = getDb();
+
+  if (!db) {
+    return {
+      enabled: false,
+      async loadPlans() { return []; },
+      subscribePlans() { return () => {}; },
+      async createPlan() { throw new Error('Firebase is not configured.'); },
+      async updatePlan() { throw new Error('Firebase is not configured.'); },
+      async deletePlan() { throw new Error('Firebase is not configured.'); },
+    };
+  }
+
+  const plansRef = doc(db, PLANS_DOC_PATH[0], PLANS_DOC_PATH[1]);
+
+  async function readCurrent() {
+    const snap = await getDoc(plansRef);
+    return snap.exists() ? readPlansData(snap.data()) : [];
+  }
+
+  async function writePlans(plans) {
+    const cleaned = readPlansData({ plans });
+    await setDoc(
+      plansRef,
+      {
+        schemaVersion: PLANS_SCHEMA_VERSION,
+        plans: cleaned,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return cleaned;
+  }
+
+  return {
+    enabled: true,
+    schemaVersion: PLANS_SCHEMA_VERSION,
+    async loadPlans() {
+      try {
+        return await readCurrent();
+      } catch (error) {
+        if (isMissingDefaultDatabaseError(error)) return [];
+        throw error;
+      }
+    },
+    subscribePlans(onChange, onError) {
+      return onSnapshot(
+        plansRef,
+        (snap) => onChange(snap.exists() ? readPlansData(snap.data()) : []),
+        (error) => {
+          if (isMissingDefaultDatabaseError(error)) return;
+          if (typeof onError === 'function') onError(error);
+          else console.error('Plans subscription failed:', error);
+        },
+      );
+    },
+    async createPlan({ name, description, createdBy }) {
+      const trimmedName = String(name ?? '').trim();
+      if (!trimmedName) throw new Error('Plan name is required.');
+      const id = generatePlanId(trimmedName);
+      const docKey = getPlanDocKey(id);
+
+      // Seed the per-plan blueprint and runbook docs BEFORE adding the plan
+      // to the registry. If seeding fails, the registry never references a
+      // plan whose data docs do not exist, and the next visitor will not
+      // accidentally seed the new plan from their local default-plan cache.
+      const stateRef = doc(db, 'kundeplanStates', docKey);
+      const runbookRef = doc(db, 'kundeplanRunbook', docKey);
+      await setDoc(
+        stateRef,
+        {
+          state: { parts: [], selectedId: null },
+          versions: [],
+          versionCount: 0,
+          schemaVersion: PLANS_SCHEMA_VERSION,
+          createdForPlan: id,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: false },
+      );
+      await setDoc(
+        runbookRef,
+        {
+          config: {},
+          schemaVersion: PLANS_SCHEMA_VERSION,
+          createdForPlan: id,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: false },
+      );
+
+      const current = await readCurrent();
+      const entry = {
+        id,
+        name: trimmedName.slice(0, 120),
+        description: String(description ?? '').trim().slice(0, 500),
+        createdAt: new Date().toISOString(),
+        createdBy: typeof createdBy === 'string' ? createdBy : '',
+      };
+      await writePlans([...current, entry]);
+      return entry;
+    },
+    async updatePlan(planId, patch) {
+      if (!planId || planId === DEFAULT_PLAN_ID) {
+        throw new Error('Cannot edit the default plan.');
+      }
+      const current = await readCurrent();
+      const next = current.map((p) =>
+        p.id === planId
+          ? {
+              ...p,
+              name: typeof patch?.name === 'string' ? patch.name.trim().slice(0, 120) : p.name,
+              description: typeof patch?.description === 'string' ? patch.description.trim().slice(0, 500) : p.description,
+            }
+          : p,
+      );
+      return writePlans(next);
+    },
+    async deletePlan(planId) {
+      if (!planId || planId === DEFAULT_PLAN_ID) {
+        throw new Error('Cannot delete the default plan.');
+      }
+      const current = await readCurrent();
+      const next = current.filter((p) => p.id !== planId);
+      await writePlans(next);
+      // Note: per-plan state + runbook docs are intentionally left in place.
+      // Removing them would be irreversible; the admin can clear them in the
+      // Firebase console if they want a hard delete.
+      return next;
     },
   };
 }

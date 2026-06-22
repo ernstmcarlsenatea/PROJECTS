@@ -116,6 +116,14 @@ service cloud.firestore {
       allow write: if isAdminUser();
     }
 
+    // Phase 4 — multi-plan registry. List of named plans the workspace
+    // knows about. The default plan is implicit and is not stored here.
+    // Trusted users read (so they can pick a plan); only admins may write.
+    match /kundeplanPlans/{docId} {
+      allow read: if isTrustedUser();
+      allow write: if isAdminUser();
+    }
+
     // Phase 3 — append-only audit log. Each document is a single event.
     // Trusted users may read so the Activity panel can render history.
     // Editors (and admins, since admins satisfy isEditorUser) may CREATE

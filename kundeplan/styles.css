@@ -3313,3 +3313,100 @@ button:focus-visible {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.78rem;
 }
+
+/* Phase 4: plan selector + plan management */
+.plan-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.55rem;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: #fffdf6;
+}
+.plan-selector-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.plan-selector-select {
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.1rem 0.2rem;
+}
+
+.plans-panel .plan-add-form {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.plan-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  min-width: 220px;
+}
+.plan-add-field-wide { flex: 1; min-width: 320px; }
+.plan-add-field input {
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--ink);
+  padding: 0.45rem 0.65rem;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.plan-table-wrap {
+  overflow-x: auto;
+}
+.plan-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.plan-table th, .plan-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid rgba(36, 48, 70, 0.12);
+  text-align: left;
+  font-size: 0.88rem;
+  vertical-align: middle;
+}
+.plan-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.plan-row-active {
+  background: rgba(46, 174, 110, 0.08);
+}
+.plan-name strong { margin-right: 0.4rem; }
+.plan-default-pill {
+  background: rgba(31, 120, 180, 0.18);
+  color: var(--ink);
+  border: 1px solid rgba(31, 120, 180, 0.4);
+}
+.plan-active-pill {
+  background: rgba(46, 174, 110, 0.18);
+  color: var(--ink);
+  border: 1px solid rgba(46, 174, 110, 0.4);
+  margin-left: 0.25rem;
+}

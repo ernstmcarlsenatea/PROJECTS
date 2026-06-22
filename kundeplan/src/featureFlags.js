@@ -19,8 +19,10 @@ export const FEATURE_FLAGS = Object.freeze({
   searchAndFilter: true,
   // Phase 3 — append-only audit log + Activity panel.
   auditLog: true,
-  // Phase 4 (not implemented yet)
-  multiPlan: false,
+  // Phase 4 — multi-plan support (separate blueprint + runbook per plan).
+  // Switching plans triggers a page reload; templates, users, and audit log
+  // remain global. Disable to revert to a single shared plan.
+  multiPlan: true,
   // Phase 5 (not implemented yet)
   comments: false,
 });
