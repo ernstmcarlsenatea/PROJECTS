@@ -3578,3 +3578,45 @@ button:focus-visible {
   border-radius: 50%;
   background: var(--pink, #b6184a);
 }
+
+/* Phase 7: cloud versions panel */
+.versions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.9rem;
+  background: #fff;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+}
+.version-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+.version-row-label {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: 0.95rem;
+  word-break: break-word;
+}
+.version-row-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.version-row-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}

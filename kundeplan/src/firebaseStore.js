@@ -33,6 +33,9 @@ const PLANS_DOC_PATH = ['kundeplanPlans', 'registry'];
 const PLANS_SCHEMA_VERSION = 1;
 const COMMENTS_COLLECTION = 'kundeplanComments';
 const COMMENTS_SCHEMA_VERSION = 1;
+const VERSIONS_COLLECTION = 'kundeplanVersions';
+const VERSIONS_SCHEMA_VERSION = 1;
+const VERSIONS_LIST_LIMIT = 50;
 
 // Phase 4: the "default" plan continues to read/write the existing
 // kundeplanStates/shared and kundeplanRunbook/shared docs so no migration is
@@ -624,6 +627,9 @@ export const AUDIT_EVENT_TYPES = Object.freeze({
   TEMPLATE_APPLY: 'template.apply',
   RUNBOOK_STEP_STATUS: 'runbook.step.status',
   RUNBOOK_RESET: 'runbook.reset',
+  VERSION_SAVE: 'version.save',
+  VERSION_RESTORE: 'version.restore',
+  VERSION_DELETE: 'version.delete',
 });
 
 function sanitizeAuditDetails(details) {
@@ -1026,3 +1032,118 @@ export function createCommentsStore() {
 const COMMENT_ENTITY_TYPES_BY_VALUE = Object.freeze(
   Object.fromEntries(Object.values(COMMENT_ENTITY_TYPES).map((v) => [v, true])),
 );
+
+function readVersionDoc(d) {
+  const data = d.data() ?? {};
+  return {
+    id: d.id,
+    planId: data.planId ?? DEFAULT_PLAN_ID,
+    label: data.label ?? '',
+    description: data.description ?? '',
+    parts: Array.isArray(data.parts) ? data.parts : [],
+    runbookConfig: data.runbookConfig && typeof data.runbookConfig === 'object' ? data.runbookConfig : {},
+    author: data.author ?? null,
+    createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : null,
+  };
+}
+
+// Phase 7 — cloud-shared version snapshots. Append-only collection: every
+// 'Save version' click writes one new doc with the full blueprint + runbook
+// configuration for the active plan. Anyone with admin rights can restore
+// from one of these docs, which overwrites the live plan for everyone.
+//
+// Docs include parts and runbookConfig inline. Firestore caps a single doc
+// at ~1 MB which is plenty for typical plans (a few hundred parts).
+export function createVersionsStore() {
+  const db = getDb();
+
+  if (!db) {
+    return {
+      enabled: false,
+      schemaVersion: VERSIONS_SCHEMA_VERSION,
+      async addVersion() { throw new Error('Firebase is not configured.'); },
+      async deleteVersion() { throw new Error('Firebase is not configured.'); },
+      async getVersion() { throw new Error('Firebase is not configured.'); },
+      subscribeList() { return () => {}; },
+    };
+  }
+
+  const versionsCol = collection(db, VERSIONS_COLLECTION);
+  let cloudAvailable = true;
+
+  return {
+    enabled: true,
+    schemaVersion: VERSIONS_SCHEMA_VERSION,
+
+    async addVersion({ planId, label, description, parts, runbookConfig, author }) {
+      if (!cloudAvailable) return null;
+      const safePlanId = planId || DEFAULT_PLAN_ID;
+      const trimmedLabel = typeof label === 'string' ? label.trim().slice(0, 120) : '';
+      if (!trimmedLabel) throw new Error('Version label is required.');
+      const safeDescription = typeof description === 'string' ? description.trim().slice(0, 500) : '';
+      const safeParts = Array.isArray(parts) ? parts : [];
+      const safeRunbook = runbookConfig && typeof runbookConfig === 'object' ? runbookConfig : {};
+      const authorEmail = normalizeEmail(author?.email);
+      if (!authorEmail) throw new Error('Sign-in required to save a version.');
+
+      const ref = await addDoc(versionsCol, {
+        schemaVersion: VERSIONS_SCHEMA_VERSION,
+        planId: safePlanId,
+        label: trimmedLabel,
+        description: safeDescription,
+        parts: safeParts,
+        runbookConfig: safeRunbook,
+        author: {
+          email: authorEmail,
+          displayName: typeof author?.displayName === 'string' ? author.displayName.slice(0, 200) : '',
+        },
+        createdAt: serverTimestamp(),
+      });
+      return ref.id;
+    },
+
+    async deleteVersion(versionId) {
+      if (!cloudAvailable) return null;
+      await deleteDoc(doc(db, VERSIONS_COLLECTION, versionId));
+      return versionId;
+    },
+
+    async getVersion(versionId) {
+      if (!cloudAvailable) return null;
+      const snap = await getDoc(doc(db, VERSIONS_COLLECTION, versionId));
+      if (!snap.exists()) return null;
+      return readVersionDoc(snap);
+    },
+
+    subscribeList({ planId }, onChange, onError) {
+      if (!cloudAvailable) {
+        onChange?.([]);
+        return () => {};
+      }
+      const safePlanId = planId || DEFAULT_PLAN_ID;
+      // Single equality filter + client-side sort avoids a composite index.
+      const q = query(versionsCol, where('planId', '==', safePlanId));
+      return onSnapshot(
+        q,
+        (snap) => {
+          const items = [];
+          snap.forEach((d) => items.push(readVersionDoc(d)));
+          items.sort((a, b) => {
+            const ta = a.createdAt?.getTime?.() ?? 0;
+            const tb = b.createdAt?.getTime?.() ?? 0;
+            return tb - ta; // newest first
+          });
+          onChange?.(items.slice(0, VERSIONS_LIST_LIMIT));
+        },
+        (error) => {
+          if (isMissingDefaultDatabaseError(error)) {
+            cloudAvailable = false;
+            return;
+          }
+          if (typeof onError === 'function') onError(error);
+          else console.warn('Versions subscription failed:', error);
+        },
+      );
+    },
+  };
+}

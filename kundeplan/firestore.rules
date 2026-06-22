@@ -176,6 +176,28 @@ service cloud.firestore {
         || (isEditorUser() && resource.data.author.email == callerEmail());
     }
 
+    // Phase 7 — cloud-shared version snapshots. Append-only: editors and
+    // admins can CREATE a new version doc, only admins can DELETE one,
+    // nobody can UPDATE (immutability). Any trusted user can READ so the
+    // restore list is visible to admins (the UI gates the restore button).
+    match /kundeplanVersions/{versionId} {
+      allow read: if isTrustedUser();
+
+      allow create: if isEditorUser()
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.author.email == callerEmail()
+        && request.resource.data.planId is string
+        && request.resource.data.label is string
+        && request.resource.data.label.size() > 0
+        && request.resource.data.label.size() <= 120
+        && request.resource.data.parts is list
+        && request.resource.data.runbookConfig is map;
+
+      allow update: if false;
+
+      allow delete: if isAdminUser();
+    }
+
     // Default deny everything else.
     match /{document=**} {
       allow read, write: if false;

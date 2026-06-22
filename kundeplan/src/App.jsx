@@ -3,7 +3,7 @@ import { toCanvas as htmlToCanvas } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
-import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, createAuditStore, createPlansStore, AUDIT_EVENT_TYPES, DEFAULT_PLAN_ID, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, createAuditStore, createPlansStore, createVersionsStore, AUDIT_EVENT_TYPES, DEFAULT_PLAN_ID, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
 import { FEATURE_FLAGS, SCHEMA_VERSION } from './featureFlags.js';
 
 // Phase 1: lazy-load secondary pages so they don't bloat the initial bundle.
@@ -514,6 +514,34 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, [plansStore]);
+
+  // Phase 7 cloud versions: list snapshots for the active plan.
+  const versionsStore = useMemo(() => createVersionsStore(), []);
+  const [cloudVersions, setCloudVersions] = useState([]);
+  const [cloudVersionsLoaded, setCloudVersionsLoaded] = useState(false);
+  const [versionBusy, setVersionBusy] = useState(false);
+  const [versionError, setVersionError] = useState(null);
+  useEffect(() => {
+    if (!FEATURE_FLAGS.cloudVersions || !versionsStore.enabled) {
+      setCloudVersionsLoaded(true);
+      return undefined;
+    }
+    setCloudVersionsLoaded(false);
+    const unsubscribe = versionsStore.subscribeList(
+      { planId: activePlanId },
+      (next) => {
+        setCloudVersions(next);
+        setCloudVersionsLoaded(true);
+      },
+      (error) => {
+        console.warn('Versions subscription failed:', error);
+        setCloudVersionsLoaded(true);
+      },
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [versionsStore, activePlanId]);
 
   // List of all plans visible in the selector, including the implicit default.
   const visiblePlans = useMemo(() => {
@@ -1627,6 +1655,94 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       // localStorage quota exceeded — silently ignore
     }
     setVersionCount(nextCount);
+
+    // Phase 7: also mirror to the cloud so other admins can restore it. The
+    // local save above is still the source of truth for the legacy version
+    // counter and "Recover latest local backup" flow.
+    if (FEATURE_FLAGS.cloudVersions && versionsStore.enabled && callerEmail) {
+      const cloudLabel = `v${snapshot.versionLabel} — ${new Date().toLocaleString()}`;
+      versionsStore
+        .addVersion({
+          planId: activePlanId,
+          label: cloudLabel,
+          description: '',
+          parts: snapshot.parts,
+          runbookConfig: runbookConfigForStats ?? {},
+          author: { email: callerEmail, displayName: activeAccount?.name ?? '' },
+        })
+        .then((versionId) => {
+          if (versionId) {
+            recordAudit(
+              AUDIT_EVENT_TYPES.VERSION_SAVE,
+              `Saved version “${cloudLabel}” (${snapshot.parts.length} parts)`,
+              { versionId, label: cloudLabel, partsCount: snapshot.parts.length },
+            );
+          }
+        })
+        .catch((err) => console.warn('Cloud version save failed:', err));
+    }
+  }
+
+  async function restoreCloudVersion(versionId) {
+    if (!isAdmin) return;
+    if (!FEATURE_FLAGS.cloudVersions || !versionsStore.enabled) return;
+    const target = cloudVersions.find((v) => v.id === versionId);
+    if (!target) return;
+    if (!window.confirm(`Restore version "${target.label}"? This overwrites the current blueprint and runbook for the active plan for everyone.`)) {
+      return;
+    }
+    setVersionBusy(true);
+    setVersionError(null);
+    try {
+      const full = await versionsStore.getVersion(versionId);
+      if (!full) throw new Error('Version not found.');
+      const normalized = normalizePersistedState({
+        parts: Array.isArray(full.parts) ? full.parts : [],
+        selectedId: null,
+      });
+      setState((prev) => ({
+        ...prev,
+        parts: normalized.parts,
+        selectedId: null,
+        draft: null,
+      }));
+      if (statsRunbookStore.enabled) {
+        await statsRunbookStore.saveConfig(full.runbookConfig ?? {});
+      }
+      recordAudit(
+        AUDIT_EVENT_TYPES.VERSION_RESTORE,
+        `Restored version “${target.label}” (${normalized.parts.length} parts, ${Object.keys(full.runbookConfig ?? {}).length} runbook steps)`,
+        { versionId, label: target.label, partsCount: normalized.parts.length },
+      );
+    } catch (err) {
+      console.error('Cloud version restore failed:', err);
+      setVersionError(err?.message ?? String(err));
+    } finally {
+      setVersionBusy(false);
+    }
+  }
+
+  async function deleteCloudVersion(versionId) {
+    if (!isAdmin) return;
+    if (!FEATURE_FLAGS.cloudVersions || !versionsStore.enabled) return;
+    const target = cloudVersions.find((v) => v.id === versionId);
+    if (!target) return;
+    if (!window.confirm(`Delete version "${target.label}"? This cannot be undone.`)) return;
+    setVersionBusy(true);
+    setVersionError(null);
+    try {
+      await versionsStore.deleteVersion(versionId);
+      recordAudit(
+        AUDIT_EVENT_TYPES.VERSION_DELETE,
+        `Deleted version “${target.label}”`,
+        { versionId, label: target.label },
+      );
+    } catch (err) {
+      console.error('Cloud version delete failed:', err);
+      setVersionError(err?.message ?? String(err));
+    } finally {
+      setVersionBusy(false);
+    }
   }
 
   function ensureCloudPassword() {
@@ -3692,6 +3808,77 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       </section>
       ) : null}
 
+      {isAdmin && FEATURE_FLAGS.cloudVersions ? (
+      <section className="panel cloud-panel admin-panel versions-panel">
+        <div className="panel-header cloud-panel-header">
+          <div>
+            <p className="panel-kicker">Versions</p>
+            <h2>Restore a saved snapshot</h2>
+            <p className="panel-note">
+              Every time anyone clicks <strong>Save version</strong> in the top bar, the current
+              blueprint and runbook of the active plan are written to the cloud here. Admins can
+              restore any of them — that overwrites the live blueprint and runbook for the active
+              plan for everyone. Versions are append-only (most recent 50 shown). Currently
+              active plan: <strong>{activePlan?.name ?? activePlanId}</strong>.
+            </p>
+          </div>
+        </div>
+
+        {!versionsStore.enabled ? (
+          <p className="panel-note">Firebase is not configured — cloud versions unavailable.</p>
+        ) : !cloudVersionsLoaded ? (
+          <p className="panel-note">Loading versions…</p>
+        ) : cloudVersions.length === 0 ? (
+          <p className="panel-note">No cloud versions yet for this plan. Click <strong>Save version</strong> in the top bar to create one.</p>
+        ) : (
+          <ul className="versions-list">
+            {cloudVersions.map((v) => {
+              const ts = v.createdAt ? new Date(v.createdAt) : null;
+              const tsLabel = ts ? ts.toLocaleString() : '';
+              const stepCount = Object.keys(v.runbookConfig || {}).length;
+              return (
+                <li key={v.id} className="version-row">
+                  <div className="version-row-main">
+                    <div className="version-row-label">{v.label}</div>
+                    <div className="version-row-meta">
+                      {tsLabel}
+                      {v.author?.displayName ? ` · ${v.author.displayName}` : ''}
+                      {v.author?.email ? ` (${v.author.email})` : ''}
+                      {` · ${v.parts.length} parts · ${stepCount} runbook steps`}
+                    </div>
+                  </div>
+                  <div className="version-row-actions">
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => restoreCloudVersion(v.id)}
+                      disabled={versionBusy}
+                      title="Overwrite the current blueprint and runbook with this version."
+                    >
+                      Restore
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => deleteCloudVersion(v.id)}
+                      disabled={versionBusy}
+                      title="Permanently delete this cloud version."
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {versionError ? (
+          <span className="cloud-status-error" title={versionError}>{versionError}</span>
+        ) : null}
+      </section>
+      ) : null}
+
       {isAdmin && FEATURE_FLAGS.auditLog ? (
       <section className="panel cloud-panel admin-panel audit-panel">
         <div className="panel-header cloud-panel-header">
@@ -4225,6 +4412,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   <li><strong>template.*</strong> — template saved, applied, renamed, deleted, imported.</li>
                   <li><strong>runbook.*</strong> — status / assignee / due date / notes changes and runbook resets.</li>
                   <li><strong>plan.*</strong> — plan created, renamed, deleted.</li>
+                  <li><strong>version.*</strong> — version saved, restored, deleted.</li>
                   <li><strong>comment.*</strong> — comment added, edited, deleted.</li>
                 </ul>
                 <p>
@@ -4246,12 +4434,31 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
               <section id="guide-versions">
                 <h3>18. Versions</h3>
+                <p>
+                  Versions are point-in-time snapshots of the blueprint and runbook of the active
+                  plan. Clicking <strong>Save version</strong> in the top bar saves one in two
+                  places at once:
+                </p>
                 <ul>
-                  <li>Use <strong>Save version</strong> in the hero to snapshot the current plan locally.</li>
-                  <li>The version counter increments with each save (e.g. v3).</li>
-                  <li>"Recover latest local backup" in Cloud sync uploads your most recent saved version to the cloud.</li>
-                  <li>For shareable snapshots across users, save a <strong>template</strong> instead (section 9) — versions are local, templates are cloud-wide.</li>
+                  <li><strong>Locally</strong> in this browser (used by the <em>Recover latest local backup</em> button in Cloud sync). The version counter in the hero (v1, v2, …) tracks how many you have saved here.</li>
+                  <li><strong>To the cloud</strong>, under the active plan, where any admin can restore it.</li>
                 </ul>
+                <h4>Restoring (admin only)</h4>
+                <p>
+                  The <strong>Versions</strong> panel lists the most recent 50 cloud versions for
+                  the active plan, newest first. Each row shows the label, who saved it, when, and
+                  how many parts + runbook steps it contains. Buttons:
+                </p>
+                <ul>
+                  <li><strong>Restore</strong> — overwrites the live blueprint and runbook for the active plan for everyone. Asks for confirmation first.</li>
+                  <li><strong>Delete</strong> — permanently removes the cloud version. Local versions are not affected.</li>
+                </ul>
+                <p>
+                  Versions are append-only — they cannot be edited, and the underlying audit log
+                  records every save, restore, and delete (see section 16). For sharing a known
+                  blueprint shape across plans or installations, use a <strong>template</strong>
+                  instead (section 9).
+                </p>
               </section>
 
               <section id="guide-offline">

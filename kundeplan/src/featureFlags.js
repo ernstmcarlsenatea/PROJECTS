@@ -32,6 +32,12 @@ export const FEATURE_FLAGS = Object.freeze({
   // network. Disable to fall back to network-only Firestore and skip SW
   // registration. Already-registered SWs auto-unregister on next load.
   offline: true,
+  // Phase 7 — cloud-shared version snapshots. Save version writes to a
+  // Firestore collection in addition to localStorage. Admins can list and
+  // restore any saved snapshot for the active plan, overwriting the live
+  // blueprint and runbook for everyone. Disable to fall back to local-only
+  // versions; previously written cloud versions remain readable in Firestore.
+  cloudVersions: true,
 });
 
 export function isFeatureEnabled(name) {
