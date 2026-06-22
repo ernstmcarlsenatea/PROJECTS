@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#fffdf6"/>
+  <g stroke="#243046" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <circle cx="160" cy="180" r="48" fill="#ffd166"/>
+    <circle cx="352" cy="180" r="48" fill="#ef476f"/>
+    <circle cx="256" cy="356" r="48" fill="#06d6a0"/>
+    <line x1="160" y1="180" x2="352" y2="180"/>
+    <line x1="160" y1="180" x2="256" y2="356"/>
+    <line x1="352" y1="180" x2="256" y2="356"/>
+  </g>
+  <text x="256" y="468" text-anchor="middle" font-family="'Comic Sans MS','Marker Felt',cursive" font-weight="700" font-size="56" fill="#243046">KP</text>
+</svg>

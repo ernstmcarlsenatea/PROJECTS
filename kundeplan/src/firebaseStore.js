@@ -6,15 +6,19 @@ import {
   doc,
   getDoc,
   getFirestore,
+  initializeFirestore,
   limit as firestoreLimit,
   onSnapshot,
   orderBy,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   query,
   serverTimestamp,
   setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
+import { FEATURE_FLAGS } from './featureFlags.js';
 
 // Bootstrap super-admin. This email always has admin rights even if no
 // admins document exists yet, so it can grant admin status to other users.
@@ -115,12 +119,30 @@ function isConfigured() {
   return REQUIRED_KEYS.every((key) => Boolean(firebaseConfig[key]));
 }
 
+// Phase 6: cache the Firestore instance so we only call initializeFirestore
+// once (the SDK throws if called twice on the same app). When the offline
+// flag is on we use a persistent IndexedDB cache with multi-tab support;
+// otherwise we use the default memory cache.
+let _dbInstance = null;
 function getDb() {
   if (!isConfigured()) {
     return null;
   }
-
-  return getFirestore(firebaseApp);
+  if (_dbInstance) return _dbInstance;
+  if (FEATURE_FLAGS.offline) {
+    try {
+      _dbInstance = initializeFirestore(firebaseApp, {
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      });
+    } catch (err) {
+      // Already initialized elsewhere, or the browser blocked IndexedDB
+      // (private mode, storage disabled). Fall back to the default instance.
+      _dbInstance = getFirestore(firebaseApp);
+    }
+  } else {
+    _dbInstance = getFirestore(firebaseApp);
+  }
+  return _dbInstance;
 }
 
 function sanitizeKey(value) {

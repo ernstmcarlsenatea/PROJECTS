@@ -270,6 +270,28 @@ function DetailLine({ label, value }) {
   );
 }
 
+function OnlineStatusBadge() {
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine !== false,
+  );
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+  if (isOnline) return null;
+  return (
+    <span className="offline-pill" title="No network — changes will sync when you reconnect.">
+      Offline
+    </span>
+  );
+}
+
 function versionLabel(count) {
   if (count <= 0) return null;
   const major = Math.floor((count - 1) / 10) + 1;
@@ -2324,6 +2346,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           </p>
         </div>
         <div className="hero-actions">
+          {FEATURE_FLAGS.offline ? <OnlineStatusBadge /> : null}
           {FEATURE_FLAGS.multiPlan && visiblePlans.length > 1 ? (
             <label className="plan-selector" title="Active plan — switching reloads the page">
               <span className="plan-selector-label">Plan</span>

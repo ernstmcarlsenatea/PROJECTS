@@ -3555,3 +3555,26 @@ button:focus-visible {
   font-size: 0.82rem;
   color: var(--pink, #b6184a);
 }
+
+/* Phase 6: offline status pill */
+.offline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  border: 2px solid var(--outline);
+  border-radius: 999px;
+  background: #fff3b0;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.offline-pill::before {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--pink, #b6184a);
+}

@@ -1,0 +1,18 @@
+{
+  "name": "Kundeplan Cartoon Atlas",
+  "short_name": "Kundeplan",
+  "description": "Visualize customer plan parts, ownership, placement, dependencies, and source propagation.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#fffdf6",
+  "theme_color": "#243046",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -6,7 +6,28 @@ import App from './App.jsx';
 import { AuthGuard } from './AuthGuard.jsx';
 import { FirebaseAuthGate } from './FirebaseAuthGate.jsx';
 import { msalConfig } from './authConfig.js';
+import { FEATURE_FLAGS } from './featureFlags.js';
 import '../styles.css';
+
+// Phase 6 — register the PWA service worker in production builds when the
+// offline flag is on. If the flag is off but a worker is already registered
+// from a previous build, unregister it so the user is not stuck on a stale
+// shell. SW is intentionally not registered in dev to avoid the usual HMR
+// vs SW caching footguns.
+if ('serviceWorker' in navigator) {
+  const swUrl = `${import.meta.env.BASE_URL}sw.js`;
+  if (FEATURE_FLAGS.offline && import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register(swUrl).catch(() => {});
+    });
+  } else {
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      regs.forEach((reg) => {
+        if (reg.active && reg.active.scriptURL.endsWith('/sw.js')) reg.unregister();
+      });
+    }).catch(() => {});
+  }
+}
 
 function AuthenticatedAppShell() {
   const { instance, accounts } = useMsal();

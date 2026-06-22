@@ -26,6 +26,12 @@ export const FEATURE_FLAGS = Object.freeze({
   // Phase 5 — per-entity comments on parts and runbook steps.
   // Editors/admins can post; authors can edit own; admins or author can delete.
   comments: true,
+  // Phase 6 — offline/PWA support. Enables (a) Firestore IndexedDB persistent
+  // cache (offline reads + queued writes synced on reconnect) and (b) a
+  // service worker that caches the built app shell so the page loads with no
+  // network. Disable to fall back to network-only Firestore and skip SW
+  // registration. Already-registered SWs auto-unregister on next load.
+  offline: true,
 });
 
 export function isFeatureEnabled(name) {
