@@ -1,12 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, Suspense, lazy } from 'react';
 import { toCanvas as htmlToCanvas } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
 import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
-import { RunbookPage } from './RunbookPage.jsx';
-import { TemplatesPage } from './TemplatesPage.jsx';
 import { FEATURE_FLAGS, SCHEMA_VERSION } from './featureFlags.js';
+
+// Phase 1: lazy-load secondary pages so they don't bloat the initial bundle.
+// Rollback path: `git revert` the Phase 1 commit.
+const RunbookPage = lazy(() => import('./RunbookPage.jsx').then((m) => ({ default: m.RunbookPage })));
+const TemplatesPage = lazy(() => import('./TemplatesPage.jsx').then((m) => ({ default: m.TemplatesPage })));
+
+function PageLoadingFallback({ label }) {
+  return (
+    <section className="page-loading" role="status" aria-live="polite">
+      <span className="page-loading-spinner" aria-hidden="true" />
+      <span>Loading {label}…</span>
+    </section>
+  );
+}
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 const NODE_WIDTH = 220;
@@ -2050,18 +2062,22 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       </nav>
 
       {currentPage === 'runbook' ? (
-        <RunbookPage parts={state.parts} canEdit={canEditRunbook} />
+        <Suspense fallback={<PageLoadingFallback label="runbook" />}>
+          <RunbookPage parts={state.parts} canEdit={canEditRunbook} />
+        </Suspense>
       ) : null}
 
       {currentPage === 'templates' ? (
-        <TemplatesPage
-          currentParts={state.parts}
-          currentRunbookConfig={runbookConfigForStats}
-          canManage={isAdmin}
-          canApply={isAdmin}
-          callerEmail={callerEmail}
-          onApplyTemplate={applyTemplate}
-        />
+        <Suspense fallback={<PageLoadingFallback label="templates" />}>
+          <TemplatesPage
+            currentParts={state.parts}
+            currentRunbookConfig={runbookConfigForStats}
+            canManage={isAdmin}
+            canApply={isAdmin}
+            callerEmail={callerEmail}
+            onApplyTemplate={applyTemplate}
+          />
+        </Suspense>
       ) : null}
 
       {currentPage === 'blueprint' ? (
