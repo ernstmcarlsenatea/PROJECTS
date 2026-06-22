@@ -247,3 +247,89 @@ export function createAdminStore() {
     },
   };
 }
+
+// Shared runbook config store. Keeps per-step state (status, notes, assignee,
+// due date) synced across all signed-in users. Trusted users read; admins write.
+export function createRunbookStore() {
+  const db = getDb();
+  const docKey = SHARED_DOC_KEY;
+
+  if (!db) {
+    return {
+      enabled: false,
+      async loadConfig() {
+        return null;
+      },
+      async saveConfig() {
+        return null;
+      },
+      subscribeConfig() {
+        return () => {};
+      },
+    };
+  }
+
+  const runbookRef = doc(db, 'kundeplanRunbook', docKey);
+  let cloudAvailable = true;
+
+  return {
+    enabled: true,
+    async loadConfig() {
+      if (!cloudAvailable) return null;
+      try {
+        const snapshot = await getDoc(runbookRef);
+        return snapshot.exists() ? snapshot.data() : null;
+      } catch (error) {
+        if (isMissingDefaultDatabaseError(error)) {
+          cloudAvailable = false;
+          return null;
+        }
+        throw error;
+      }
+    },
+    subscribeConfig(onChange, onError) {
+      if (!cloudAvailable) return () => {};
+      return onSnapshot(
+        runbookRef,
+        { includeMetadataChanges: true },
+        (snapshot) => {
+          const data = snapshot.exists() ? snapshot.data() : null;
+          onChange(data, {
+            fromCache: snapshot.metadata.fromCache,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          });
+        },
+        (error) => {
+          if (isMissingDefaultDatabaseError(error)) {
+            cloudAvailable = false;
+            return;
+          }
+          if (typeof onError === 'function') {
+            onError(error);
+          } else {
+            console.error('Runbook subscription failed:', error);
+          }
+        },
+      );
+    },
+    async saveConfig(config) {
+      if (!cloudAvailable) return;
+      try {
+        await setDoc(
+          runbookRef,
+          {
+            config: config ?? {},
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      } catch (error) {
+        if (isMissingDefaultDatabaseError(error)) {
+          cloudAvailable = false;
+          return;
+        }
+        throw error;
+      }
+    },
+  };
+}

@@ -1701,7 +1701,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       </nav>
 
       {currentPage === 'runbook' ? (
-        <RunbookPage parts={state.parts} />
+        <RunbookPage parts={state.parts} canEdit={canEdit} />
       ) : null}
 
       {currentPage === 'blueprint' ? (

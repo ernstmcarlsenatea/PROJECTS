@@ -2270,3 +2270,116 @@ button:focus-visible {
   }
 }
 
+/* ============================================================
+   RUNBOOK — assignee, due date, cloud sync status
+   ============================================================ */
+
+.runbook-cloud-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  align-items: center;
+}
+
+.runbook-cloud-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--outline);
+}
+
+.rb-cloud-idle      { background: rgba(36, 48, 70, 0.08); color: var(--muted); }
+.rb-cloud-syncing   { background: rgba(255, 216, 79, 0.7); color: #6b5000; }
+.rb-cloud-synced    { background: rgba(118, 228, 122, 0.6); color: #1a5c1e; }
+.rb-cloud-offline   { background: rgba(36, 48, 70, 0.12); color: var(--muted); }
+.rb-cloud-error     { background: rgba(255, 125, 168, 0.6); color: #6b1539; }
+.rb-cloud-readonly  { background: rgba(183, 214, 255, 0.7); color: #1f3f6b; }
+
+.runbook-cloud-error {
+  font-size: 0.78rem;
+  color: #6b1539;
+  font-style: italic;
+}
+
+/* Step assignee chip in head */
+.runbook-step-assignee {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #1f3f6b;
+  background: rgba(183, 214, 255, 0.55);
+  padding: 0.18rem 0.55rem;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+/* Due date badge */
+.runbook-due-badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.18rem 0.55rem;
+  border-radius: var(--radius-sm);
+  background: rgba(36, 48, 70, 0.08);
+  color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.runbook-due-badge.is-soon {
+  background: rgba(255, 216, 79, 0.55);
+  color: #6b5000;
+}
+
+.runbook-due-badge.is-overdue {
+  background: rgba(255, 125, 168, 0.75);
+  color: #6b1539;
+  font-weight: 700;
+}
+
+.runbook-step.is-overdue {
+  border-left: 5px solid var(--pink);
+}
+
+/* Overdue progress legend */
+.rb-legend-overdue {
+  color: #6b1539;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+/* Runbook-specific fields (assignee + due date) */
+.runbook-step-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: rgba(183, 214, 255, 0.18);
+  border: 1.5px solid rgba(36, 48, 70, 0.15);
+  border-radius: var(--radius-md);
+}
+
+.runbook-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.runbook-field input {
+  font-family: inherit;
+  font-size: 0.92rem;
+  padding: 0.45rem 0.6rem;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--ink);
+}
+
+.runbook-field input:disabled {
+  background: rgba(36, 48, 70, 0.04);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+

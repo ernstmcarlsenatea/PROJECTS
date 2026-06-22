@@ -72,6 +72,13 @@ service cloud.firestore {
       allow write: if isAdminUser();
     }
 
+    // Shared runbook config (per-step status, notes, assignee, due date).
+    // Trusted users read; only admins write.
+    match /kundeplanRunbook/{docId} {
+      allow read: if isTrustedUser();
+      allow write: if isAdminUser();
+    }
+
     // Default deny everything else.
     match /{document=**} {
       allow read, write: if false;
