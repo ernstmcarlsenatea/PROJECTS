@@ -3081,3 +3081,61 @@ button:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* User guide TOC */
+.user-guide-toc {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 2.5px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: rgba(255, 216, 79, 0.18);
+  box-shadow: 0 3px 8px rgba(36, 48, 70, 0.06);
+}
+
+.user-guide-toc-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.user-guide-toc-list {
+  list-style: decimal inside;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.3rem 1rem;
+  font-size: 0.9rem;
+}
+
+.user-guide-toc-list li {
+  padding: 0.15rem 0;
+}
+
+.user-guide-toc-list a {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1.5px dotted rgba(36, 48, 70, 0.35);
+  padding-bottom: 1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.user-guide-toc-list a:hover,
+.user-guide-toc-list a:focus-visible {
+  color: var(--pink, #b6184a);
+  border-bottom-color: currentColor;
+  outline: none;
+}
+
+.user-guide-body section {
+  scroll-margin-top: 0.5rem;
+}
+
+@media (max-width: 720px) {
+  .user-guide-toc-list {
+    grid-template-columns: 1fr;
+  }
+}

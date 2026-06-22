@@ -3156,7 +3156,46 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             </header>
 
             <div className="user-guide-body">
-              <section>
+              <nav className="user-guide-toc" aria-label="Contents">
+                <p className="user-guide-toc-title">Contents</p>
+                <ol className="user-guide-toc-list">
+                  {[
+                    { id: 'guide-overview', label: 'What this app does' },
+                    { id: 'guide-roles', label: 'Roles & permissions' },
+                    { id: 'guide-hero', label: 'Top bar (hero) actions' },
+                    { id: 'guide-nav', label: 'Page navigation' },
+                    { id: 'guide-blueprint', label: 'Blueprint map (the graph)' },
+                    { id: 'guide-inspector', label: 'Inspector (right panel)' },
+                    { id: 'guide-runbook', label: 'Runbook page' },
+                    { id: 'guide-templates', label: 'Templates (shared repository)' },
+                    { id: 'guide-catalog', label: 'Catalog (parts grouped by residence)' },
+                    { id: 'guide-summary', label: 'Plan summary' },
+                    { id: 'guide-cloud', label: 'Cloud sync (Firebase)' },
+                    { id: 'guide-users', label: 'Users & roles (admin only)' },
+                    { id: 'guide-stats', label: 'Statistics (admin only)' },
+                    { id: 'guide-versions', label: 'Versions' },
+                    { id: 'guide-tips', label: 'Tips' },
+                    { id: 'guide-keyboard', label: 'Keyboard & accessibility' },
+                  ].map((item) => (
+                    <li key={item.id}>
+                      <a
+                        href={`#${item.id}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          const target = document.getElementById(item.id);
+                          if (target && typeof target.scrollIntoView === 'function') {
+                            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }}
+                      >
+                        {item.label}
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+
+              <section id="guide-overview">
                 <h3>1. What this app does</h3>
                 <p>
                   Kundeplan maps the parts of a customer plan — who owns each part, where it
@@ -3173,7 +3212,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </p>
               </section>
 
-              <section>
+              <section id="guide-roles">
                 <h3>2. Roles &amp; permissions</h3>
                 <p>Every signed-in user has exactly one role:</p>
                 <ul>
@@ -3188,7 +3227,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </p>
               </section>
 
-              <section>
+              <section id="guide-hero">
                 <h3>3. Top bar (hero) actions</h3>
                 <ul>
                   <li><strong>User guide</strong> — opens this document.</li>
@@ -3198,7 +3237,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </ul>
               </section>
 
-              <section>
+              <section id="guide-nav">
                 <h3>4. Page navigation</h3>
                 <p>Three tabs sit directly below the header:</p>
                 <ul>
@@ -3208,7 +3247,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </ul>
               </section>
 
-              <section>
+              <section id="guide-blueprint">
                 <h3>5. Blueprint map (the graph)</h3>
                 <p>The Blueprint map shows every part as a card and every relation as a line. Admin-only for edits; viewers and editors see it read-only.</p>
                 <h4>Toolbar</h4>
@@ -3254,7 +3293,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </ul>
               </section>
 
-              <section>
+              <section id="guide-inspector">
                 <h3>6. Inspector (right panel)</h3>
                 <p>Use the Inspector to edit the selected part. Fields are:</p>
                 <ul>
@@ -3273,7 +3312,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <p>The lower detail view summarises the part's resolved values, source chain, and dependencies for quick reference.</p>
               </section>
 
-              <section>
+              <section id="guide-runbook">
                 <h3>7. Runbook page</h3>
                 <p>
                   The Runbook is generated automatically from the blueprint. Every part becomes
@@ -3305,7 +3344,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </p>
               </section>
 
-              <section>
+              <section id="guide-templates">
                 <h3>8. Templates (shared repository)</h3>
                 <p>
                   The Templates page is a shared repository of named snapshots that bundle the
@@ -3336,7 +3375,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </p>
               </section>
 
-              <section>
+              <section id="guide-catalog">
                 <h3>9. Catalog (parts grouped by residence)</h3>
                 <p>
                   A compact, scannable list of every part, grouped by where it resides. Click any
@@ -3347,12 +3386,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </p>
               </section>
 
-              <section>
+              <section id="guide-summary">
                 <h3>10. Plan summary</h3>
                 <p>The stats row beneath the catalog shows the totals (parts, sources, dependencies, etc.) for the current plan.</p>
               </section>
 
-              <section>
+              <section id="guide-cloud">
                 <h3>11. Cloud sync (Firebase)</h3>
                 <p>
                   Available to admins only. The blueprint, runbook, users, and templates all sync
@@ -3368,7 +3407,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </ul>
               </section>
 
-              <section>
+              <section id="guide-users">
                 <h3>12. Users &amp; roles (admin only)</h3>
                 <p>
                   The Users panel lists everyone in the registry along with their role. Admins can:
@@ -3385,7 +3424,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </p>
               </section>
 
-              <section>
+              <section id="guide-stats">
                 <h3>13. Statistics (admin only)</h3>
                 <p>The Statistics panel shows four live cards driven by the cloud data:</p>
                 <ul>
@@ -3396,7 +3435,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </ul>
               </section>
 
-              <section>
+              <section id="guide-versions">
                 <h3>14. Versions</h3>
                 <ul>
                   <li>Use <strong>Save version</strong> in the hero to snapshot the current plan locally.</li>
@@ -3406,7 +3445,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </ul>
               </section>
 
-              <section>
+              <section id="guide-tips">
                 <h3>15. Tips</h3>
                 <ul>
                   <li>Drag nodes to organise the map; layout positions are persisted.</li>
@@ -3418,7 +3457,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </ul>
               </section>
 
-              <section>
+              <section id="guide-keyboard">
                 <h3>16. Keyboard &amp; accessibility</h3>
                 <ul>
                   <li>Both per-node popouts (Connections ↘ and Part actions ✎) respond to keyboard focus. Use <kbd>Tab</kbd> to focus the icon, then <kbd>Enter</kbd> or <kbd>Space</kbd> on each menu item.</li>
