@@ -525,6 +525,8 @@ var TeleTestResult = class {
   }
 };
 var baseFullConfig = {
+  argv: [],
+  failOnFlakyTests: false,
   forbidOnly: false,
   fullyParallel: false,
   globalSetup: null,
@@ -704,15 +706,14 @@ async function gitCommitInfo(gitDir) {
     // committer name
     "%ce",
     // committer email
-    "%ct",
+    "%ct"
     // committer date, UNIX timestamp
-    ""
-    // branch
   ];
-  const output = await runGit(`git log -1 --pretty=format:"${tokens.join(separator2)}" && git rev-parse --abbrev-ref HEAD`, gitDir);
-  if (!output)
+  const logOutput = await runGit(["log", "-1", `--pretty=format:${tokens.join(separator2)}`], gitDir);
+  if (!logOutput)
     return void 0;
-  const [hash, shortHash, subject, body, authorName, authorEmail, authorTime, committerName, committerEmail, committerTime, branch] = output.split(separator2);
+  const branchOutput = await runGit(["rev-parse", "--abbrev-ref", "HEAD"], gitDir);
+  const [hash, shortHash, subject, body, authorName, authorEmail, authorTime, committerName, committerEmail, committerTime] = logOutput.split(separator2);
   return {
     shortHash,
     hash,
@@ -728,38 +729,38 @@ async function gitCommitInfo(gitDir) {
       email: committerEmail,
       time: +committerTime * 1e3
     },
-    branch: branch.trim()
+    branch: branchOutput?.trim() ?? ""
   };
 }
 async function gitDiff(gitDir, ci) {
   const diffLimit = 1e5;
   if (ci?.prBaseHash) {
-    await runGit(`git fetch origin ${ci.prBaseHash} --depth=1 --no-auto-maintenance --no-auto-gc --no-tags --no-recurse-submodules`, gitDir);
-    const diff3 = await runGit(`git diff ${ci.prBaseHash} HEAD`, gitDir);
+    await runGit(["fetch", "origin", ci.prBaseHash, "--depth=1", "--no-auto-maintenance", "--no-auto-gc", "--no-tags", "--no-recurse-submodules"], gitDir);
+    const diff3 = await runGit(["diff", ci.prBaseHash, "HEAD"], gitDir);
     if (diff3)
       return diff3.substring(0, diffLimit);
   }
   if (ci)
     return;
-  const uncommitted = await runGit("git diff", gitDir);
+  const uncommitted = await runGit(["diff"], gitDir);
   if (uncommitted === void 0) {
     return;
   }
   if (uncommitted)
     return uncommitted.substring(0, diffLimit);
-  const diff2 = await runGit("git diff HEAD~1", gitDir);
+  const diff2 = await runGit(["diff", "HEAD~1"], gitDir);
   return diff2?.substring(0, diffLimit);
 }
-async function runGit(command, cwd) {
-  debug(`running "${command}"`);
+async function runGit(args, cwd) {
+  debug(`running "git ${args.join(" ")}"`);
   const start = monotonicTime();
   const result = await spawnAsync(
-    command,
-    [],
-    { stdio: "pipe", cwd, timeout: GIT_OPERATIONS_TIMEOUT_MS, shell: true }
+    "git",
+    args,
+    { stdio: "pipe", cwd, timeout: GIT_OPERATIONS_TIMEOUT_MS }
   );
   if (monotonicTime() - start > GIT_OPERATIONS_TIMEOUT_MS) {
-    print(`timeout of ${GIT_OPERATIONS_TIMEOUT_MS}ms exceeded while running "${command}"`);
+    print(`timeout of ${GIT_OPERATIONS_TIMEOUT_MS}ms exceeded while running "git ${args.join(" ")}"`);
     return;
   }
   if (result.code)
@@ -774,6 +775,7 @@ ${result.stderr}`);
 // packages/playwright/src/plugins/webServerPlugin.ts
 var import_net = __toESM(require("net"));
 var import_path = __toESM(require("path"));
+var import_util = require("util");
 var colors = require("playwright-core/lib/utilsBundle").colors;
 var debug2 = require("playwright-core/lib/utilsBundle").debug;
 var { ManualPromise } = require("playwright-core/lib/coreBundle").iso;
@@ -882,7 +884,7 @@ var WebServerPlugin = class {
       launchedProcess[stdio].on("data", (data) => {
         if (!this._options.wait?.[stdio] || stdioWaitCollectors[stdio] === void 0)
           return;
-        stdioWaitCollectors[stdio] += data.toString();
+        stdioWaitCollectors[stdio] += (0, import_util.stripVTControlCharacters)(data.toString());
         this._options.wait[stdio].lastIndex = 0;
         const result = this._options.wait[stdio].exec(stdioWaitCollectors[stdio]);
         if (result) {
@@ -1004,7 +1006,8 @@ __export(base_exports, {
   terminalScreen: () => terminalScreen
 });
 var import_path2 = __toESM(require("path"));
-var import_util = require("../util");
+var import_stream = require("stream");
+var import_util2 = require("../util");
 var realColors = require("playwright-core/lib/utilsBundle").colors;
 var { noColors } = require("playwright-core/lib/coreBundle").iso;
 var { msToString } = require("playwright-core/lib/coreBundle").iso;
@@ -1016,6 +1019,15 @@ var DEFAULT_TTY_WIDTH = 100;
 var DEFAULT_TTY_HEIGHT = 40;
 var originalProcessStdout = process.stdout;
 var originalProcessStderr = process.stderr;
+var StripAnsiStream = class extends import_stream.Writable {
+  constructor(target) {
+    super();
+    this._target = target;
+  }
+  _write(chunk, encoding, callback) {
+    this._target.write((0, import_util2.stripAnsiEscapes)(chunk.toString()), callback);
+  }
+};
 var terminalScreen = (() => {
   let isTTY = !!originalProcessStdout.isTTY;
   let ttyWidth = originalProcessStdout.columns || 0;
@@ -1044,7 +1056,7 @@ var terminalScreen = (() => {
       ttyHeight = DEFAULT_TTY_HEIGHT;
   }
   let useColors = isTTY;
-  if (process.env.DEBUG_COLORS === "0" || process.env.DEBUG_COLORS === "false" || process.env.FORCE_COLOR === "0" || process.env.FORCE_COLOR === "false")
+  if (process.env.DEBUG_COLORS === "0" || process.env.DEBUG_COLORS === "false" || process.env.FORCE_COLOR === "0" || process.env.FORCE_COLOR === "false" || process.env.NO_COLOR !== void 0 && process.env.NO_COLOR !== "")
     useColors = false;
   else if (process.env.DEBUG_COLORS || process.env.FORCE_COLOR)
     useColors = true;
@@ -1055,8 +1067,8 @@ var terminalScreen = (() => {
     ttyWidth,
     ttyHeight,
     colors: colors7,
-    stdout: originalProcessStdout,
-    stderr: originalProcessStderr
+    stdout: useColors ? originalProcessStdout : new StripAnsiStream(originalProcessStdout),
+    stderr: useColors ? originalProcessStderr : new StripAnsiStream(originalProcessStderr)
   };
 })();
 var nonTerminalScreen = {
@@ -1444,7 +1456,7 @@ function formatError(screen, error) {
   if (error.snippet) {
     let snippet = error.snippet;
     if (!screen.colors.enabled)
-      snippet = (0, import_util.stripAnsiEscapes)(snippet);
+      snippet = (0, import_util2.stripAnsiEscapes)(snippet);
     tokens.push("");
     tokens.push(snippet);
   }
@@ -1464,7 +1476,7 @@ function separator(screen, text = "") {
   if (text)
     text += " ";
   const columns = Math.min(100, screen.ttyWidth || 100);
-  return text + screen.colors.dim("\u2500".repeat(Math.max(0, columns - (0, import_util.stripAnsiEscapes)(text).length)));
+  return text + screen.colors.dim("\u2500".repeat(Math.max(0, columns - (0, import_util2.stripAnsiEscapes)(text).length)));
 }
 function indent(lines, tab) {
   return lines.replace(/^(?=.+$)/gm, tab);
@@ -1489,7 +1501,7 @@ function resolveOutputFile(reporterName, options) {
   if (!outputDir && options.outputDir)
     outputDir = import_path2.default.resolve(options.configDir, options.outputDir);
   if (!outputDir && options.default)
-    outputDir = (0, import_util.resolveReporterOutputPath)(options.default.outputDir, options.configDir, void 0);
+    outputDir = (0, import_util2.resolveReporterOutputPath)(options.default.outputDir, options.configDir, void 0);
   if (!outputDir)
     outputDir = options.configDir;
   const reportName = process.env[`PLAYWRIGHT_${name}_OUTPUT_NAME`] ?? options.fileName ?? options.default?.fileName;
@@ -1801,7 +1813,7 @@ function addLocationAndSnippetToError(config2, error, file) {
 }
 
 // packages/playwright/src/runner/testRunner.ts
-var import_util13 = require("../util");
+var import_util14 = require("../util");
 
 // packages/playwright/src/runner/reporters.ts
 var reporters_exports = {};
@@ -1997,7 +2009,7 @@ var InProcessLoaderHost = class {
     return result;
   }
   async stop() {
-    await import_common2.esm.incorporateCompilationCache();
+    await import_common2.transform.incorporateCompilationCache();
   }
 };
 var OutOfProcessLoaderHost = class {
@@ -2028,7 +2040,7 @@ var OutOfProcessLoaderHost = class {
 };
 
 // packages/playwright/src/runner/loadUtils.ts
-var import_util4 = require("../util");
+var import_util5 = require("../util");
 
 // packages/playwright/src/runner/projectUtils.ts
 var projectUtils_exports = {};
@@ -2042,12 +2054,12 @@ __export(projectUtils_exports, {
 });
 var import_fs2 = __toESM(require("fs"));
 var import_path3 = __toESM(require("path"));
-var import_util2 = require("util");
-var import_util3 = require("../util");
+var import_util3 = require("util");
+var import_util4 = require("../util");
 var minimatch = require("playwright-core/lib/utilsBundle").minimatch;
 var { escapeRegExp } = require("playwright-core/lib/coreBundle").iso;
-var readFileAsync = (0, import_util2.promisify)(import_fs2.default.readFile);
-var readDirAsync = (0, import_util2.promisify)(import_fs2.default.readdir);
+var readFileAsync = (0, import_util3.promisify)(import_fs2.default.readFile);
+var readDirAsync = (0, import_util3.promisify)(import_fs2.default.readdir);
 function wildcardPatternToRegExp(pattern) {
   return new RegExp("^" + pattern.split("*").map(escapeRegExp).join(".*") + "$", "ig");
 }
@@ -2152,8 +2164,8 @@ async function collectFilesForProject(project, fsCache = /* @__PURE__ */ new Map
   const extensions = /* @__PURE__ */ new Set([".js", ".ts", ".mjs", ".mts", ".cjs", ".cts", ".jsx", ".tsx", ".mjsx", ".mtsx", ".cjsx", ".ctsx"]);
   const testFileExtension = (file) => extensions.has(import_path3.default.extname(file));
   const allFiles = await cachedCollectFiles(project.project.testDir, project.respectGitIgnore, fsCache);
-  const testMatch = (0, import_util3.createFileMatcher)(project.project.testMatch);
-  const testIgnore = (0, import_util3.createFileMatcher)(project.project.testIgnore);
+  const testMatch = (0, import_util4.createFileMatcher)(project.project.testMatch);
+  const testIgnore = (0, import_util4.createFileMatcher)(project.project.testIgnore);
   const testFiles = allFiles.filter((file) => {
     if (!testFileExtension(file))
       return false;
@@ -2473,8 +2485,8 @@ function createProjectSuite(project, fileSuites) {
   const projectSuite = new import_common3.test.Suite(project.project.name, "project");
   for (const fileSuite of fileSuites)
     projectSuite._addSuite(import_common3.suiteUtils.bindFileSuiteToProject(project, fileSuite));
-  const grepMatcher = (0, import_util4.createTitleMatcher)(project.project.grep);
-  const grepInvertMatcher = project.project.grepInvert ? (0, import_util4.createTitleMatcher)(project.project.grepInvert) : null;
+  const grepMatcher = (0, import_util5.createTitleMatcher)(project.project.grep);
+  const grepInvertMatcher = project.project.grepInvert ? (0, import_util5.createTitleMatcher)(project.project.grepInvert) : null;
   import_common3.suiteUtils.filterTestsRemoveEmptySuites(projectSuite, (test) => {
     const grepTitle = test._grepTitleWithTags();
     if (grepInvertMatcher?.(grepTitle))
@@ -2546,7 +2558,7 @@ async function requireOrImportDefaultFunction(file, expectConstructor) {
   if (func && typeof func === "object" && "default" in func)
     func = func["default"];
   if (typeof func !== "function")
-    throw (0, import_util4.errorWithFile)(file, `file must export a single ${expectConstructor ? "class" : "function"}.`);
+    throw (0, import_util5.errorWithFile)(file, `file must export a single ${expectConstructor ? "class" : "function"}.`);
   return func;
 }
 function loadGlobalHook(config2, file) {
@@ -2585,7 +2597,7 @@ async function loadTestList(config2, filePath) {
         project = tokens[0].substring(1, tokens[0].length - 1);
         tokens.shift();
       }
-      return { project, file: toPosixPath((0, import_util4.parseLocationArg)(tokens[0]).file), titlePath: tokens.slice(1) };
+      return { project, file: toPosixPath((0, import_util5.parseLocationArg)(tokens[0]).file), titlePath: tokens.slice(1) };
     });
     const testFilter = (test) => descriptions.some((d) => {
       const [projectName, , ...titles] = test.titlePath();
@@ -2602,14 +2614,14 @@ async function loadTestList(config2, filePath) {
     };
     return { testFilter, fileFilter };
   } catch (e) {
-    throw (0, import_util4.errorWithFile)(filePath, "Cannot read test list file: " + e.message);
+    throw (0, import_util5.errorWithFile)(filePath, "Cannot read test list file: " + e.message);
   }
 }
 
 // packages/playwright/src/reporters/blob.ts
 var import_fs4 = __toESM(require("fs"));
 var import_path6 = __toESM(require("path"));
-var import_stream = require("stream");
+var import_stream2 = require("stream");
 var import_coreBundle = require("playwright-core/lib/coreBundle");
 
 // packages/playwright/src/reporters/teleEmitter.ts
@@ -2762,7 +2774,8 @@ var TeleReporterEmitter = class {
       globalSetup: config2.globalSetup,
       globalTeardown: config2.globalTeardown,
       tags: config2.tags,
-      webServer: config2.webServer
+      webServer: config2.webServer,
+      failOnFlakyTests: config2.failOnFlakyTests
     };
   }
   _serializeProject(suite) {
@@ -2955,7 +2968,7 @@ var BlobReporter = class extends TeleReporterEmitter {
       zipFile.addFile(originalPath, zipEntryPath);
     }
     const lines = this._messages.map((m) => JSON.stringify(m) + "\n");
-    const content = import_stream.Readable.from(lines);
+    const content = import_stream2.Readable.from(lines);
     zipFile.addReadStream(content, "report.jsonl");
     zipFile.end();
     await finishPromise;
@@ -3089,14 +3102,14 @@ var empty_default = EmptyReporter;
 
 // packages/playwright/src/reporters/github.ts
 var import_path7 = __toESM(require("path"));
-var import_util5 = require("../util");
+var import_util6 = require("../util");
 var { noColors: noColors2 } = require("playwright-core/lib/coreBundle").iso;
 var { msToString: msToString2 } = require("playwright-core/lib/coreBundle").iso;
 var GitHubLogger = class {
   _log(message, type = "notice", options = {}) {
     message = message.replace(/\n/g, "%0A");
     const configs = Object.entries(options).map(([key, option]) => `${key}=${option}`).join(",");
-    process.stdout.write((0, import_util5.stripAnsiEscapes)(`::${type} ${configs}::${message}
+    process.stdout.write((0, import_util6.stripAnsiEscapes)(`::${type} ${configs}::${message}
 `));
   }
   debug(message, options) {
@@ -3203,9 +3216,9 @@ __export(html_exports, {
 var import_fs5 = __toESM(require("fs"));
 var import_os = __toESM(require("os"));
 var import_path8 = __toESM(require("path"));
-var import_stream2 = require("stream");
+var import_stream3 = require("stream");
 var babel2 = __toESM(require("../transform/babelBundle"));
-var import_util6 = require("../util");
+var import_util7 = require("../util");
 var colors2 = require("playwright-core/lib/utilsBundle").colors;
 var mime2 = require("playwright-core/lib/utilsBundle").mime;
 var open = require("playwright-core/lib/utilsBundle").open;
@@ -3263,7 +3276,7 @@ var HtmlReporter = class {
     this.suite = suite;
   }
   _resolveOptions() {
-    const outputFolder = reportFolderFromEnv() ?? (0, import_util6.resolveReporterOutputPath)("playwright-report", this._options.configDir, this._options.outputFolder);
+    const outputFolder = reportFolderFromEnv() ?? (0, import_util7.resolveReporterOutputPath)("playwright-report", this._options.configDir, this._options.outputFolder);
     return {
       outputFolder,
       open: getHtmlReportOptionProcessEnv() || this._options.open || "on-failure",
@@ -3343,7 +3356,7 @@ function parseBooleanEnvVar(name) {
   return void 0;
 }
 function standaloneDefaultFolder() {
-  return reportFolderFromEnv() ?? (0, import_util6.resolveReporterOutputPath)("playwright-report", process.cwd(), void 0);
+  return reportFolderFromEnv() ?? (0, import_util7.resolveReporterOutputPath)("playwright-report", process.cwd(), void 0);
 }
 async function resolveReportFolder(reportPath) {
   const stat = await import_fs5.default.promises.stat(reportPath).catch(() => null);
@@ -3520,9 +3533,9 @@ var HtmlBuilder = class {
   }
   async _writeReportData(filePath) {
     import_fs5.default.appendFileSync(filePath, '<template id="playwrightReportBase64">data:application/zip;base64,');
-    await new Promise((f) => {
+    await new Promise((resolve, reject) => {
       this._dataZipFile.end(void 0, () => {
-        this._dataZipFile.outputStream.pipe(new Base64Encoder()).pipe(import_fs5.default.createWriteStream(filePath, { flags: "a" })).on("close", f);
+        this._dataZipFile.outputStream.pipe(new Base64Encoder()).pipe(import_fs5.default.createWriteStream(filePath, { flags: "a" })).on("close", resolve).on("error", reject);
       });
     });
     import_fs5.default.appendFileSync(filePath, "</template>");
@@ -3608,10 +3621,10 @@ var HtmlBuilder = class {
         this._hasTraces = true;
       if ((a.name === "stdout" || a.name === "stderr") && a.contentType === "text/plain") {
         if (lastAttachment && lastAttachment.name === a.name && lastAttachment.contentType === a.contentType) {
-          lastAttachment.body += (0, import_util6.stripAnsiEscapes)(a.body);
+          lastAttachment.body += (0, import_util7.stripAnsiEscapes)(a.body);
           return null;
         }
-        a.body = (0, import_util6.stripAnsiEscapes)(a.body);
+        a.body = (0, import_util7.stripAnsiEscapes)(a.body);
         lastAttachment = a;
         return a;
       }
@@ -3751,7 +3764,7 @@ var addStats = (stats, delta) => {
   stats.ok = stats.ok && delta.ok;
   return stats;
 };
-var Base64Encoder = class extends import_stream2.Transform {
+var Base64Encoder = class extends import_stream3.Transform {
   _transform(chunk, encoding, callback) {
     if (this._remainder) {
       chunk = Buffer.concat([this._remainder, chunk]);
@@ -3842,7 +3855,7 @@ function createErrorCodeframe(message, location) {
       highlightCode: false,
       linesAbove: 100,
       linesBelow: 100,
-      message: (0, import_util6.stripAnsiEscapes)(message).split("\n")[0] || void 0
+      message: (0, import_util7.stripAnsiEscapes)(message).split("\n")[0] || void 0
     }
   );
 }
@@ -4072,7 +4085,7 @@ var json_default = JSONReporter;
 // packages/playwright/src/reporters/junit.ts
 var import_fs7 = __toESM(require("fs"));
 var import_path10 = __toESM(require("path"));
-var import_util7 = require("../util");
+var import_util8 = require("../util");
 var { getAsBooleanFromENV } = require("playwright-core/lib/coreBundle").utils;
 var JUnitReporter = class {
   constructor(options) {
@@ -4238,7 +4251,7 @@ var JUnitReporter = class {
       entry.children.push({
         name: errorInfo.elementName,
         attributes: { message: errorInfo.message, type: errorInfo.type },
-        text: (0, import_util7.stripAnsiEscapes)(formatFailure(nonTerminalScreen, this.config, test))
+        text: (0, import_util8.stripAnsiEscapes)(formatFailure(nonTerminalScreen, this.config, test))
       });
       return errorInfo.elementName;
     }
@@ -4248,7 +4261,7 @@ var JUnitReporter = class {
         message: `${import_path10.default.basename(test.location.file)}:${test.location.line}:${test.location.column} ${test.title}`,
         type: "FAILURE"
       },
-      text: (0, import_util7.stripAnsiEscapes)(formatFailure(nonTerminalScreen, this.config, test))
+      text: (0, import_util8.stripAnsiEscapes)(formatFailure(nonTerminalScreen, this.config, test))
     });
     return "failure";
   }
@@ -4295,7 +4308,7 @@ Warning: attachment ${attachmentPath} is missing`);
       children: []
     };
     const stackTrace = result.error?.stack || result.error?.message || result.error?.value || "";
-    entry.children.push({ name: "stackTrace", text: (0, import_util7.stripAnsiEscapes)(stackTrace) });
+    entry.children.push({ name: "stackTrace", text: (0, import_util8.stripAnsiEscapes)(stackTrace) });
     await this._appendStdIO(entry, [result]);
     return entry;
   }
@@ -4304,7 +4317,7 @@ function classifyResultError(result) {
   const error = result.error;
   if (!error)
     return null;
-  const rawMessage = (0, import_util7.stripAnsiEscapes)(error.message || error.value || "");
+  const rawMessage = (0, import_util8.stripAnsiEscapes)(error.message || error.value || "");
   const nameMatch = rawMessage.match(/^(\w+): /);
   const errorName = nameMatch ? nameMatch[1] : "";
   const messageBody = nameMatch ? rawMessage.slice(nameMatch[0].length) : rawMessage;
@@ -4346,7 +4359,7 @@ function serializeXML(entry, tokens, stripANSIControlSequences) {
 var discouragedXMLCharacters = /[\u0000-\u0008\u000b-\u000c\u000e-\u001f\u007f-\u0084\u0086-\u009f]/g;
 function escape(text, stripANSIControlSequences, isCharacterData) {
   if (stripANSIControlSequences)
-    text = (0, import_util7.stripAnsiEscapes)(text);
+    text = (0, import_util8.stripAnsiEscapes)(text);
   if (isCharacterData) {
     text = "<![CDATA[" + text.replace(/]]>/g, "]]&gt;") + "]]>";
   } else {
@@ -4468,7 +4481,7 @@ var LineReporter = class extends TerminalReporter {
 var line_default = LineReporter;
 
 // packages/playwright/src/reporters/list.ts
-var import_util8 = require("../util");
+var import_util9 = require("../util");
 var { msToString: msToString3 } = require("playwright-core/lib/coreBundle").iso;
 var { getAsBooleanFromENV: getAsBooleanFromENV2 } = require("playwright-core/lib/coreBundle").utils;
 var DOES_NOT_SUPPORT_UTF8_IN_TERMINAL = process.platform === "win32" && process.env.TERM_PROGRAM !== "vscode" && !process.env.WT_SESSION;
@@ -4484,8 +4497,10 @@ var ListReporter = class extends TerminalReporter {
     this._resultIndex = /* @__PURE__ */ new Map();
     this._stepIndex = /* @__PURE__ */ new Map();
     this._needNewLine = false;
+    this._failureIndex = 0;
     this._paused = /* @__PURE__ */ new Set();
     this._printSteps = getAsBooleanFromENV2("PLAYWRIGHT_LIST_PRINT_STEPS", options?.printSteps);
+    this._printFailuresInline = getAsBooleanFromENV2("PLAYWRIGHT_LIST_PRINT_FAILURES_INLINE", options?.printFailuresInline);
   }
   onBegin(suite) {
     super.onBegin(suite);
@@ -4612,6 +4627,15 @@ var ListReporter = class extends TerminalReporter {
     const wasPaused = this._paused.delete(result);
     if (!wasPaused)
       this._updateTestLine(test, result);
+    const isFailure = result.status !== "skipped" && result.status !== test.expectedStatus;
+    if (!wasPaused && this._printFailuresInline && isFailure)
+      this._printFailure(test);
+  }
+  _printFailure(test) {
+    this._maybeWriteNewLine();
+    const message = "\n" + this.formatFailure(test, ++this._failureIndex) + "\n";
+    this._updateLineCountAndNewLineFlagForOutput(message);
+    this.screen.stdout.write(message);
   }
   _updateTestLine(test, result) {
     const title = this.formatTestTitle(test);
@@ -4675,7 +4699,7 @@ var ListReporter = class extends TerminalReporter {
       this.screen.stdout.write(`\x1B[${this._lastRow - row}E`);
   }
   _testPrefix(index, statusMark) {
-    const statusMarkLength = (0, import_util8.stripAnsiEscapes)(statusMark).length;
+    const statusMarkLength = (0, import_util9.stripAnsiEscapes)(statusMark).length;
     const indexLength = Math.ceil(Math.log10(this.totalTestCount + 1));
     return "  " + statusMark + " ".repeat(3 - statusMarkLength) + this.screen.colors.dim(index.padStart(indexLength) + " ");
   }
@@ -4692,7 +4716,7 @@ var ListReporter = class extends TerminalReporter {
   async onEnd(result) {
     await super.onEnd(result);
     this.screen.stdout.write("\n");
-    this.epilogue(true);
+    this.epilogue(!this._printFailuresInline);
   }
 };
 var lastStepOrdinalSymbol = Symbol("lastStepOrdinal");
@@ -4827,7 +4851,7 @@ function computeCommandHash(config2, runOptions) {
 // packages/playwright/src/runner/tasks.ts
 var import_fs11 = __toESM(require("fs"));
 var import_path15 = __toESM(require("path"));
-var import_util11 = require("util");
+var import_util12 = require("util");
 
 // packages/playwright/src/runner/rebase.ts
 var import_fs9 = __toESM(require("fs"));
@@ -5051,7 +5075,7 @@ var WorkerHost = class extends ProcessHost {
 
 // packages/playwright/src/runner/dispatcher.ts
 var import_common6 = require("../common");
-var import_util9 = require("../util");
+var import_util10 = require("../util");
 var colors4 = require("playwright-core/lib/utilsBundle").colors;
 var { ManualPromise: ManualPromise3 } = require("playwright-core/lib/coreBundle").iso;
 var { eventsHelper } = require("playwright-core/lib/coreBundle").utils;
@@ -5503,7 +5527,7 @@ var JobDispatcher = class {
           addLocationAndSnippetToError(this._testRun.config.config, response.error);
         return response;
       } catch (e) {
-        const error = (0, import_util9.serializeError)(e);
+        const error = (0, import_util10.serializeError)(e);
         addLocationAndSnippetToError(this._testRun.config.config, error);
         return { response: void 0, error };
       }
@@ -5622,7 +5646,7 @@ var FixedNodeSIGINTHandler = class {
 };
 
 // packages/playwright/src/runner/taskRunner.ts
-var import_util10 = require("../util");
+var import_util11 = require("../util");
 var colors5 = require("playwright-core/lib/utilsBundle").colors;
 var debug4 = require("playwright-core/lib/utilsBundle").debug;
 var { ManualPromise: ManualPromise4 } = require("playwright-core/lib/coreBundle").iso;
@@ -5663,7 +5687,7 @@ var TaskRunner = class _TaskRunner {
           await task.setup?.(context, errors, softErrors);
         } catch (e) {
           debug4("pw:test:task")(`error in "${task.title}": `, e);
-          errors.push((0, import_util10.serializeError)(e));
+          errors.push((0, import_util11.serializeError)(e));
         } finally {
           for (const error of [...softErrors, ...errors])
             this._reporter.onError?.(error);
@@ -5763,12 +5787,12 @@ async function detectChangedTestFiles(baseCommit, configDir) {
 
 // packages/playwright/src/runner/tasks.ts
 var import_common8 = require("../common");
-var import_util12 = require("../util");
+var import_util13 = require("../util");
 var debug5 = require("playwright-core/lib/utilsBundle").debug;
 var { ManualPromise: ManualPromise5 } = require("playwright-core/lib/coreBundle").iso;
 var { monotonicTime: monotonicTime6 } = require("playwright-core/lib/coreBundle").iso;
 var { removeFolders: removeFolders4 } = require("playwright-core/lib/coreBundle").utils;
-var readDirAsync2 = (0, import_util11.promisify)(import_fs11.default.readdir);
+var readDirAsync2 = (0, import_util12.promisify)(import_fs11.default.readdir);
 var TestRun = class {
   constructor(config2, reporter, options) {
     this.rootSuite = void 0;
@@ -5796,7 +5820,7 @@ var TestRun = class {
   result() {
     const hasFailedTests = this.rootSuite?.allTests().some((test) => !test.ok());
     const hasFlakyTests = this.rootSuite?.allTests().some((test) => test.outcome() === "flaky");
-    return this.hasWorkerErrors || this.hasReachedMaxFailures() || hasFailedTests || this.config.failOnFlakyTests && hasFlakyTests ? "failed" : "passed";
+    return this.hasWorkerErrors || this.hasReachedMaxFailures() || hasFailedTests || this.config.config.failOnFlakyTests && hasFlakyTests ? "failed" : "passed";
   }
 };
 async function runTasks(testRun, tasks, globalTimeout, cancelPromise) {
@@ -5845,7 +5869,7 @@ function createClearCacheTask(config2) {
   return {
     title: "clear cache",
     setup: async () => {
-      await (0, import_util12.removeDirAndLogToConsole)(import_common8.cc.cacheDir);
+      await (0, import_util13.removeDirAndLogToConsole)(import_common8.cc.cacheDir);
       for (const plugin of config2.plugins)
         await plugin.instance?.clearCache?.();
     }
@@ -5978,8 +6002,8 @@ function createLoadTask(mode, options) {
         testRun.preOnlyTestFilters.push((test) => !testFilter(test));
       }
       if (testRun.options.grep || testRun.options.grepInvert) {
-        const grepMatcher = testRun.options.grep ? (0, import_util12.createTitleMatcher)((0, import_util12.forceRegExp)(testRun.options.grep)) : () => true;
-        const grepInvertMatcher = testRun.options.grepInvert ? (0, import_util12.createTitleMatcher)((0, import_util12.forceRegExp)(testRun.options.grepInvert)) : () => false;
+        const grepMatcher = testRun.options.grep ? (0, import_util13.createTitleMatcher)((0, import_util13.forceRegExp)(testRun.options.grep)) : () => true;
+        const grepInvertMatcher = testRun.options.grepInvert ? (0, import_util13.createTitleMatcher)((0, import_util13.forceRegExp)(testRun.options.grepInvert)) : () => false;
         testRun.preOnlyTestFilters.push((test) => {
           const grepTitle = test._grepTitleWithTags();
           return !grepInvertMatcher(grepTitle) && grepMatcher(grepTitle);
@@ -6117,11 +6141,16 @@ function createRunTestsTask() {
 var import_fs12 = __toESM(require("fs"));
 var import_path16 = __toESM(require("path"));
 var LastRunReporter = class {
-  constructor(filteredProjects, listMode) {
+  constructor(filteredProjects, listMode, lastFailedFileOverride) {
     this._listMode = !!listMode;
-    const [project] = filteredProjects;
-    if (project)
-      this._lastRunFile = import_path16.default.join(project.project.outputDir, ".last-run.json");
+    const override = lastFailedFileOverride ?? process.env.PLAYWRIGHT_LAST_RUN_OUTPUT_FILE;
+    if (override) {
+      this._lastRunFile = import_path16.default.resolve(process.cwd(), override);
+    } else {
+      const [project] = filteredProjects;
+      if (project)
+        this._lastRunFile = import_path16.default.join(project.project.outputDir, ".last-run.json");
+    }
   }
   async filterLastFailed() {
     if (!this._lastRunFile)
@@ -6345,7 +6374,8 @@ var TestRunner = class extends import_events2.default {
       },
       ...params.updateSnapshots ? { updateSnapshots: params.updateSnapshots } : {},
       ...params.updateSourceMethod ? { updateSourceMethod: params.updateSourceMethod } : {},
-      ...params.workers ? { workers: params.workers } : {}
+      ...params.workers ? { workers: params.workers } : {},
+      ...params.maxFailures ? { maxFailures: params.maxFailures } : {}
     };
     const config2 = await this._loadConfigOrReportError(new InternalReporter([userReporter]), overrides);
     if (!config2)
@@ -6423,10 +6453,14 @@ var TestRunner = class extends import_events2.default {
       } else {
         config2.plugins.splice(0, config2.plugins.length, ...this._plugins);
       }
+      this._lastLoadedConfig = config2;
       return { config: config2 };
     } catch (e) {
-      return { config: null, error: (0, import_util13.serializeError)(e) };
+      return { config: null, error: (0, import_util14.serializeError)(e) };
     }
+  }
+  lastLoadedConfig() {
+    return this._lastLoadedConfig;
   }
   async _loadConfigOrReportError(reporter, overrides) {
     const { config: config2, error } = await this._loadConfig(overrides);
@@ -6460,7 +6494,7 @@ async function runAllTestsWithConfig(config2, options) {
   webServerPluginsForConfig(config2).forEach((p) => config2.plugins.push({ factory: p }));
   const filteredProjects = filterProjects(config2.projects, options.projectFilter);
   const reporters = await createReporters(config2, options.listMode ? "list" : "test", void 0, options);
-  const lastRun = new LastRunReporter(filteredProjects, options.listMode);
+  const lastRun = new LastRunReporter(filteredProjects, options.listMode, options.lastFailedFile);
   if (options.lastFailed) {
     const lastFailedTestIds = await lastRun.filterLastFailed();
     if (lastFailedTestIds.length)
@@ -6490,7 +6524,7 @@ __export(testServer_exports, {
   runTestServer: () => runTestServer,
   runUIMode: () => runUIMode
 });
-var import_util14 = __toESM(require("util"));
+var import_util15 = __toESM(require("util"));
 var import_coreBundle3 = require("playwright-core/lib/coreBundle");
 var import_common10 = require("../common");
 
@@ -6520,7 +6554,23 @@ var TestServer = class {
   }
   async start(options) {
     this._dispatcher = new TestServerDispatcher(this._configLocation, this._configCLIOverrides);
-    return await import_coreBundle3.server.startTraceViewerServer({ ...options, transport: this._dispatcher.transport });
+    return await import_coreBundle3.server.startTraceViewerServer({
+      host: options.host,
+      port: options.port,
+      allowedFileRoots: () => this._allowedFileRoots(),
+      transport: this._dispatcher.transport
+    });
+  }
+  _allowedFileRoots() {
+    const roots = /* @__PURE__ */ new Set([process.cwd(), this._configLocation.configDir]);
+    const config2 = this._dispatcher?._testRunner.lastLoadedConfig();
+    if (config2) {
+      for (const project of config2.projects) {
+        roots.add(project.project.outputDir);
+        roots.add(project.project.testDir);
+      }
+    }
+    return [...roots];
   }
   async stop() {
     await this._dispatcher?.stop();
@@ -6634,7 +6684,7 @@ var TestServerDispatcher = class {
     if (interceptStdio) {
       if (debug6.log === originalDebugLog) {
         debug6.log = (...args) => {
-          const string = import_util14.default.format(...args) + "\n";
+          const string = import_util15.default.format(...args) + "\n";
           return originalStderrWrite.apply(process.stderr, [string]);
         };
       }
@@ -6729,7 +6779,7 @@ __export(watchMode_exports, {
 });
 var import_path18 = __toESM(require("path"));
 var import_readline = __toESM(require("readline"));
-var import_stream3 = require("stream");
+var import_events3 = require("events");
 var import_coreBundle4 = require("playwright-core/lib/coreBundle");
 
 // packages/playwright/src/isomorphic/testTree.ts
@@ -7076,7 +7126,7 @@ var { ManualPromise: ManualPromise8 } = require("playwright-core/lib/coreBundle"
 var { createGuid: createGuid3 } = require("playwright-core/lib/coreBundle").utils;
 var { getPackageManagerExecCommand: getPackageManagerExecCommand3 } = require("playwright-core/lib/coreBundle").utils;
 var { eventsHelper: eventsHelper2 } = require("playwright-core/lib/coreBundle").utils;
-var InMemoryTransport = class extends import_stream3.EventEmitter {
+var InMemoryTransport = class extends import_events3.EventEmitter {
   constructor(send) {
     super();
     this._send = send;
@@ -7476,7 +7526,7 @@ var JsonStringInternalizer = class {
 };
 
 // packages/playwright/src/reporters/merge.ts
-var import_util15 = require("../util");
+var import_util16 = require("../util");
 var { isPathInside } = require("playwright-core/lib/coreBundle").utils;
 var { ZipFile } = require("playwright-core/lib/coreBundle").utils;
 async function createMergedReport(config2, dir, reporterDescriptions, rootDirOverride) {
@@ -7571,7 +7621,7 @@ async function extractAndParseReports(dir, shardFiles, internalizer, printStatus
   const reportNames = new UniqueFileNameGenerator();
   for (const file of shardFiles) {
     const absolutePath = import_path19.default.join(dir, file);
-    printStatus(`extracting: ${(0, import_util15.relativeFilePath)(absolutePath)}`);
+    printStatus(`extracting: ${(0, import_util16.relativeFilePath)(absolutePath)}`);
     const zipFile = new ZipFile(absolutePath);
     const entryNames = await zipFile.entries();
     for (const entryName of entryNames.sort()) {

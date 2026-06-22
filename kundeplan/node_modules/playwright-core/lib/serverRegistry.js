@@ -7210,7 +7210,7 @@ var ServerRegistry = class extends import_events.EventEmitter {
     return null;
   }
   _browsersDir() {
-    return process.env.PLAYWRIGHT_SERVER_REGISTRY || registryDirectory;
+    return process.env.PWTEST_SERVER_REGISTRY || registryDirectory;
   }
   _startWatcher() {
     const dir = this._browsersDir();

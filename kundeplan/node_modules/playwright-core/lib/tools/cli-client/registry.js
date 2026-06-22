@@ -117,8 +117,8 @@ class Registry {
   }
 }
 const baseDaemonDir = (() => {
-  if (process.env.PLAYWRIGHT_DAEMON_SESSION_DIR)
-    return process.env.PLAYWRIGHT_DAEMON_SESSION_DIR;
+  if (process.env.PWTEST_DAEMON_SESSION_DIR)
+    return process.env.PWTEST_DAEMON_SESSION_DIR;
   let localCacheDir;
   if (process.platform === "linux")
     localCacheDir = process.env.XDG_CACHE_HOME || import_path.default.join(import_os.default.homedir(), ".cache");

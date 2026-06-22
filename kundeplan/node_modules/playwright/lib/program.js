@@ -46,8 +46,11 @@ function addTestCommand(program2) {
     return command;
   });
   command.action(async (args, opts) => {
+    const dashDashIndex = process.argv.indexOf("--");
+    const postDashCount = dashDashIndex >= 0 ? process.argv.length - 1 - dashDashIndex : 0;
+    const testFilters = args.slice(0, args.length - postDashCount);
     try {
-      await (0, import_testActions.runTests)(args, opts);
+      await (0, import_testActions.runTests)(testFilters, opts);
     } catch (e) {
       console.error(e);
       gracefullyProcessExitDoNotHang(1);
@@ -144,7 +147,7 @@ function addInitAgentsCommand(program2) {
   const command = program2.command("init-agents");
   command.description("Initialize repository agents");
   const option = command.createOption("--loop <loop>", "Agentic loop provider");
-  option.choices(["claude", "copilot", "opencode", "vscode", "vscode-legacy"]);
+  option.choices(["claude", "codex", "copilot", "opencode", "vscode", "vscode-legacy"]);
   command.addOption(option);
   command.option("-c, --config <file>", `Configuration file to find a project to use for seed test`);
   command.option("--project <project>", "Project to use for seed test");
@@ -157,6 +160,8 @@ function addInitAgentsCommand(program2) {
       await import_generateAgents.VSCodeGenerator.init(loadedConfig, opts.project);
     } else if (opts.loop === "claude") {
       await import_generateAgents.ClaudeGenerator.init(loadedConfig, opts.project, opts.prompts);
+    } else if (opts.loop === "codex") {
+      await import_generateAgents.CodexGenerator.init(loadedConfig, opts.project, opts.prompts);
     } else {
       await import_generateAgents.CopilotGenerator.init(loadedConfig, opts.project, opts.prompts);
       return;
@@ -174,10 +179,11 @@ const testOptions = [
   ["--fully-parallel", { description: `Run all tests in parallel (default: false)` }],
   ["--global-timeout <timeout>", { description: `Maximum time this test suite can run in milliseconds (default: unlimited)` }],
   ["-g, --grep <grep>", { description: `Only run tests matching this regular expression (default: ".*")` }],
-  ["--grep-invert <grep>", { description: `Only run tests that do not match this regular expression` }],
+  ["-G, --grep-invert <grep>", { description: `Only run tests that do not match this regular expression` }],
   ["--headed", { description: `Run tests in headed browsers (default: headless)` }],
   ["--ignore-snapshots", { description: `Ignore screenshot and snapshot expectations` }],
   ["--last-failed", { description: `Only re-run the failures` }],
+  ["--last-failed-file <file>", { description: `Override the default path for the last-run JSON file used with --last-failed (default: <outputDir>/.last-run.json). Same as PLAYWRIGHT_LAST_RUN_OUTPUT_FILE environment variable.` }],
   ["--list", { description: `Collect all the tests and report them, but do not run` }],
   ["--max-failures <N>", { description: `Stop after the first N failures` }],
   ["--no-deps", { description: `Do not run project dependencies` }],

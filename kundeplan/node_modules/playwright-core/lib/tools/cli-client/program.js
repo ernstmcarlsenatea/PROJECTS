@@ -131,7 +131,8 @@ async function program(options) {
     }
     case "attach": {
       const attachTarget = args._[1];
-      if (attachTarget && (args.cdp || args.endpoint || args.extension))
+      const targetCount = (attachTarget ? 1 : 0) + (args.cdp ? 1 : 0) + (args.endpoint ? 1 : 0) + (args.extension ? 1 : 0);
+      if (targetCount > 1)
         output.errorAttachConflict();
       if (attachTarget)
         args.endpoint = attachTarget;
@@ -141,7 +142,7 @@ async function program(options) {
         args.extension = true;
       }
       const cdpChannel = typeof args.cdp === "string" && (0, import_channelSessions.isKnownChannel)(args.cdp) ? args.cdp : void 0;
-      const targetName = attachTarget ?? cdpChannel ?? extensionChannel ?? args.cdp;
+      const targetName = attachTarget ?? cdpChannel ?? extensionChannel ?? args.endpoint ?? args.cdp;
       if (!targetName)
         output.errorAttachNoTarget();
       const attachSessionName = (0, import_registry.explicitSessionName)(args.session) ?? attachTarget ?? cdpChannel ?? extensionChannel ?? sessionName;
@@ -178,9 +179,11 @@ async function program(options) {
       const daemonScript = (0, import_package.libPath)("entry", "dashboardApp.js");
       const daemonArgs = [
         daemonScript,
-        `--sessionName=${sessionName}`,
         `--workspaceDir=${clientInfo.workspaceDir ?? ""}`
       ];
+      const explicit = (0, import_registry.explicitSessionName)(args.session);
+      if (explicit)
+        daemonArgs.push(`--sessionName=${explicit}`);
       if (args.port !== void 0)
         daemonArgs.push(`--port=${args.port}`);
       if (args.host !== void 0)
@@ -203,14 +206,35 @@ async function program(options) {
       const foreground = args.port !== void 0;
       const child = (0, import_child_process.spawn)(process.execPath, daemonArgs, {
         detached: !foreground,
-        stdio: foreground ? "inherit" : "ignore"
+        stdio: foreground ? "inherit" : ["pipe", "pipe", "ignore"]
       });
       if (foreground) {
         await new Promise((resolve) => child.on("exit", () => resolve()));
         return;
       }
+      const timer = setTimeout(() => child.stdin.destroy(), 6e4);
       child.unref();
-      output.show(sessionName, child.pid);
+      let daemonPid;
+      try {
+        await new Promise((resolve, reject) => {
+          let outLog = "";
+          child.stdout.on("data", (data) => {
+            outLog += data.toString();
+            const match = outLog.match(/Dashboard is running pid=(\d+)/);
+            if (match) {
+              daemonPid = Number(match[1]);
+              resolve();
+            }
+          });
+          child.once("exit", (code, signal) => reject(new Error(`Dashboard daemon exited (code=${code}, signal=${signal}) before signaling READY${outLog ? "\n" + outLog : ""}`)));
+        });
+      } finally {
+        clearTimeout(timer);
+        child.removeAllListeners("exit");
+        child.stdin.destroy();
+        child.stdout.destroy();
+      }
+      output.show(sessionName, daemonPid);
       return;
     }
     default: {

@@ -55,13 +55,11 @@ __export(util_exports, {
   serializeError: () => serializeError,
   stripAnsiEscapes: () => stripAnsiEscapes,
   takeFirst: () => takeFirst,
-  trimLongString: () => trimLongString,
   windowsFilesystemFriendlyLength: () => windowsFilesystemFriendlyLength
 });
 module.exports = __toCommonJS(util_exports);
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
-var import_url = __toESM(require("url"));
 var import_util = __toESM(require("util"));
 const debug = require("playwright-core/lib/utilsBundle").debug;
 const mime = require("playwright-core/lib/utilsBundle").mime;
@@ -141,10 +139,10 @@ function createFileMatcher(patterns) {
         return true;
     }
     if (import_path.default.sep === "\\") {
-      const fileURL = import_url.default.pathToFileURL(filePath).href;
+      const unixPath = filePath.split(import_path.default.sep).join("/");
       for (const re of reList) {
         re.lastIndex = 0;
-        if (re.test(fileURL))
+        if (re.test(unixPath))
           return true;
       }
     }
@@ -203,15 +201,6 @@ function expectTypes(receiver, types, matcherName) {
   }
 }
 const windowsFilesystemFriendlyLength = 60;
-function trimLongString(s, length = 100) {
-  if (s.length <= length)
-    return s;
-  const hash = calculateSha1(s);
-  const middle = `-${hash.substring(0, 5)}-`;
-  const start = Math.floor((length - middle.length) / 2);
-  const end = length - middle.length - start;
-  return s.substring(0, start) + middle + s.slice(-end);
-}
 function addSuffixToFilePath(filePath, suffix) {
   const ext = import_path.default.extname(filePath);
   const base = filePath.substring(0, filePath.length - ext.length);
@@ -283,11 +272,20 @@ function fileIsModule(file) {
   const folder = import_path.default.dirname(file);
   return folderIsModule(folder);
 }
+const packageJsonIsModuleCache = /* @__PURE__ */ new Map();
 function folderIsModule(folder) {
   const packageJsonPath = getPackageJsonPath(folder);
   if (!packageJsonPath)
     return false;
-  return require(packageJsonPath).type === "module";
+  if (!packageJsonIsModuleCache.has(packageJsonPath)) {
+    let isModule = false;
+    try {
+      isModule = JSON.parse(import_fs.default.readFileSync(packageJsonPath, "utf8")).type === "module";
+    } catch {
+    }
+    packageJsonIsModuleCache.set(packageJsonPath, isModule);
+  }
+  return packageJsonIsModuleCache.get(packageJsonPath);
 }
 const packageJsonMainFieldCache = /* @__PURE__ */ new Map();
 function getMainFieldFromPackageJson(packageJsonPath) {
@@ -398,6 +396,5 @@ function takeFirst(...args) {
   serializeError,
   stripAnsiEscapes,
   takeFirst,
-  trimLongString,
   windowsFilesystemFriendlyLength
 });

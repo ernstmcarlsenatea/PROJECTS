@@ -63,7 +63,7 @@ class TextOutput {
     return process.exit(1);
   }
   errorAttachConflict() {
-    console.error(`Error: cannot use target name with --cdp, --endpoint, or --extension`);
+    console.error(`Error: only one of [name], --cdp, --endpoint, or --extension can be specified`);
     return process.exit(1);
   }
   errorDetachNotAttached(session) {
@@ -221,7 +221,7 @@ class JsonOutput {
     return process.exit(1);
   }
   errorAttachConflict() {
-    this._emit({ isError: true, error: `cannot use target name with --cdp, --endpoint, or --extension` });
+    this._emit({ isError: true, error: `only one of [name], --cdp, --endpoint, or --extension can be specified` });
     return process.exit(1);
   }
   errorDetachNotAttached(session) {

@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
 import { createCloudStore, createAdminStore, computeIsAdmin, isSuperAdmin, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+import { RunbookPage } from './RunbookPage.jsx';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 const NODE_WIDTH = 220;
@@ -378,6 +379,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       }
     };
   }, [adminStore]);
+  const [currentPage, setCurrentPage] = useState('blueprint');
   const [connectionHoverId, setConnectionHoverId] = useState(null);
   const [draggingNodeId, setDraggingNodeId] = useState(null);
   const [hoveredLink, setHoveredLink] = useState(null);
@@ -1678,8 +1680,32 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         <TomAndJerryFlag />
       </header>
 
-      <section className="workspace-grid">
-        <section className="panel board-panel" ref={boardRef}>
+      {/* Page navigation tabs */}
+      <nav className="page-nav" aria-label="Application pages">
+        <button
+          type="button"
+          className={`page-nav-tab${currentPage === 'blueprint' ? ' is-active' : ''}`}
+          onClick={() => setCurrentPage('blueprint')}
+          aria-current={currentPage === 'blueprint' ? 'page' : undefined}
+        >
+          Blueprint map
+        </button>
+        <button
+          type="button"
+          className={`page-nav-tab${currentPage === 'runbook' ? ' is-active' : ''}`}
+          onClick={() => setCurrentPage('runbook')}
+          aria-current={currentPage === 'runbook' ? 'page' : undefined}
+        >
+          Runbook
+        </button>
+      </nav>
+
+      {currentPage === 'runbook' ? (
+        <RunbookPage parts={state.parts} />
+      ) : null}
+
+      {currentPage === 'blueprint' ? (
+      <section className="workspace-grid">        <section className="panel board-panel" ref={boardRef}>
           <div className="panel-header">
             <div>
               <p className="panel-kicker">Blueprint map</p>
@@ -2459,6 +2485,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           </div>
         </aside>
       </section>
+      ) : null}
 
       <section className="stats-row" aria-label="Plan summary">
         {stats.map(([value, label]) => (

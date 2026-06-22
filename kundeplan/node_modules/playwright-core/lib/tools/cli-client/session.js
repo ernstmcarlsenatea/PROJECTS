@@ -130,8 +130,6 @@ to start the browser session.`);
     ];
     if (cliArgs.headed)
       args.push("--headed");
-    if (cliArgs.extension)
-      args.push("--extension");
     if (cliArgs.browser)
       args.push(`--browser=${cliArgs.browser}`);
     if (cliArgs.persistent)
@@ -140,12 +138,12 @@ to start the browser session.`);
       args.push(`--profile=${cliArgs.profile}`);
     if (cliArgs.config)
       args.push(`--config=${cliArgs.config}`);
-    if (cliArgs.cdp)
+    if (cliArgs.extension)
+      args.push("--extension");
+    else if (cliArgs.cdp)
       args.push(`--cdp=${cliArgs.cdp}`);
-    if (cliArgs.endpoint)
+    else if (cliArgs.endpoint)
       args.push(`--endpoint=${cliArgs.endpoint}`);
-    else if (mode === "attach" && process.env.PLAYWRIGHT_CLI_SESSION)
-      args.push(`--endpoint=${process.env.PLAYWRIGHT_CLI_SESSION}`);
     const child = (0, import_child_process.spawn)(process.execPath, args, {
       detached: true,
       stdio: ["ignore", "pipe", err],
@@ -168,22 +166,13 @@ to start the browser session.`);
     await new Promise((resolve, reject) => {
       child.stdout.on("data", (data) => {
         outLog += data.toString();
-        if (!outLog.includes("<EOF>"))
-          return;
-        const errorMatch = outLog.match(/### Error\n([\s\S]*)<EOF>/);
-        const error = errorMatch ? errorMatch[1].trim() : void 0;
-        if (error) {
-          const errLogContent = import_fs.default.readFileSync(errLog, "utf-8");
-          rejectWithPid(reject, error + (errLogContent ? "\n" + errLogContent : ""));
-        }
-        const successMatch = outLog.match(/### Success\nDaemon listening on (.*)\n<EOF>/);
-        if (successMatch)
+        if (outLog.includes("Daemon listening on"))
           resolve();
       });
       child.on("close", (code) => {
         if (!signalled) {
           const errLogContent = import_fs.default.readFileSync(errLog, "utf-8");
-          rejectWithPid(reject, `Daemon process exited with code ${code}` + (errLogContent ? "\n" + errLogContent : ""));
+          rejectWithPid(reject, `Daemon process exited with code ${code}` + (outLog ? "\n" + outLog : "") + (errLogContent ? "\n" + errLogContent : ""));
         }
       });
     });
