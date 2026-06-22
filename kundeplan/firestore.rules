@@ -108,6 +108,14 @@ service cloud.firestore {
       allow write: if isEditorUser();
     }
 
+    // Template repository: named snapshots of blueprint + runbook config.
+    // All trusted users may read (so viewers can browse + export); only
+    // admins may create, update, or delete templates.
+    match /kundeplanTemplates/{docId} {
+      allow read: if isTrustedUser();
+      allow write: if isAdminUser();
+    }
+
     // Default deny everything else.
     match /{document=**} {
       allow read, write: if false;

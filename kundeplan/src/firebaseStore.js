@@ -7,6 +7,7 @@ export const SUPER_ADMIN_EMAIL = 'ernst.magne.carlsen@atea.no';
 const ADMINS_DOC_PATH = ['kundeplanAdmins', 'list'];
 const EDITORS_DOC_PATH = ['kundeplanEditors', 'list'];
 const USERS_DOC_PATH = ['kundeplanUsers', 'list'];
+const TEMPLATES_DOC_PATH = ['kundeplanTemplates', 'list'];
 
 // Available roles. Order = display/sort order.
 export const ROLES = {
@@ -456,6 +457,86 @@ export function createUserStore() {
       await setDoc(
         editorsRef,
         { emails: editorEmails, updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+      return cleaned;
+    },
+  };
+}
+
+// Read + normalize a templates array from a raw Firestore doc.
+function readTemplatesData(data) {
+  const raw = Array.isArray(data?.templates) ? data.templates : [];
+  const seen = new Set();
+  const cleaned = [];
+  for (const t of raw) {
+    if (!t || typeof t !== 'object') continue;
+    const id = typeof t.id === 'string' && t.id ? t.id : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    cleaned.push({
+      id,
+      name: typeof t.name === 'string' ? t.name.trim() : '',
+      description: typeof t.description === 'string' ? t.description.trim() : '',
+      createdAt: t.createdAt ?? null,
+      createdBy: typeof t.createdBy === 'string' ? t.createdBy : '',
+      parts: Array.isArray(t.parts) ? t.parts : [],
+      runbookConfig: t.runbookConfig && typeof t.runbookConfig === 'object' ? t.runbookConfig : {},
+    });
+  }
+  return cleaned;
+}
+
+// Template repository store. Stores named snapshots of blueprint parts +
+// runbook config so admins can save reusable templates. All trusted users
+// may read templates (to view + export); only admins may write.
+export function createTemplateStore() {
+  const db = getDb();
+
+  if (!db) {
+    return {
+      enabled: false,
+      async loadTemplates() {
+        return [];
+      },
+      subscribeTemplates() {
+        return () => {};
+      },
+      async saveTemplates() {
+        throw new Error('Firebase is not configured.');
+      },
+    };
+  }
+
+  const templatesRef = doc(db, TEMPLATES_DOC_PATH[0], TEMPLATES_DOC_PATH[1]);
+
+  return {
+    enabled: true,
+    async loadTemplates() {
+      try {
+        const snap = await getDoc(templatesRef);
+        return snap.exists() ? readTemplatesData(snap.data()) : [];
+      } catch (error) {
+        if (isMissingDefaultDatabaseError(error)) return [];
+        throw error;
+      }
+    },
+    subscribeTemplates(onChange, onError) {
+      return onSnapshot(
+        templatesRef,
+        (snap) => onChange(snap.exists() ? readTemplatesData(snap.data()) : []),
+        (error) => {
+          if (isMissingDefaultDatabaseError(error)) return;
+          if (typeof onError === 'function') onError(error);
+          else console.error('Templates subscription failed:', error);
+        },
+      );
+    },
+    async saveTemplates(templates) {
+      const cleaned = readTemplatesData({ templates });
+      await setDoc(
+        templatesRef,
+        { templates: cleaned, updatedAt: serverTimestamp() },
         { merge: true },
       );
       return cleaned;

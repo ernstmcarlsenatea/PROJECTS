@@ -5,6 +5,7 @@ import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createI
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
 import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
 import { RunbookPage } from './RunbookPage.jsx';
+import { TemplatesPage } from './TemplatesPage.jsx';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 const NODE_WIDTH = 220;
@@ -1469,6 +1470,35 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     }
   }
 
+  async function applyTemplate({ parts, runbookConfig, templateName }) {
+    if (!isAdmin) return;
+    const normalized = normalizePersistedState({
+      parts: Array.isArray(parts) ? parts : [],
+      selectedId: null,
+    });
+    setState((prev) => ({
+      ...prev,
+      parts: normalized.parts,
+      selectedId: null,
+      draft: null,
+    }));
+    if (statsRunbookStore.enabled) {
+      try {
+        await statsRunbookStore.saveConfig(runbookConfig ?? {});
+      } catch (error) {
+        console.error('Failed to apply runbook config from template:', error);
+      }
+    }
+    setCloudActionStatus('idle');
+    setCloudActionError(null);
+    if (templateName) {
+      window.setTimeout(() => {
+        window.alert(`Template "${templateName}" applied. Switching to the blueprint…`);
+      }, 50);
+    }
+    setCurrentPage('blueprint');
+  }
+
   async function restoreCloudDataToLocal() {
     if (!canEdit) {
       setCloudActionStatus('unauthorized');
@@ -1960,10 +1990,29 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         >
           Runbook
         </button>
+        <button
+          type="button"
+          className={`page-nav-tab${currentPage === 'templates' ? ' is-active' : ''}`}
+          onClick={() => setCurrentPage('templates')}
+          aria-current={currentPage === 'templates' ? 'page' : undefined}
+        >
+          Templates
+        </button>
       </nav>
 
       {currentPage === 'runbook' ? (
         <RunbookPage parts={state.parts} canEdit={canEditRunbook} />
+      ) : null}
+
+      {currentPage === 'templates' ? (
+        <TemplatesPage
+          currentParts={state.parts}
+          currentRunbookConfig={runbookConfigForStats}
+          canManage={isAdmin}
+          canApply={isAdmin}
+          callerEmail={callerEmail}
+          onApplyTemplate={applyTemplate}
+        />
       ) : null}
 
       {currentPage === 'blueprint' ? (
