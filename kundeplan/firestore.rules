@@ -140,6 +140,42 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Phase 5 — per-entity comments (blueprint parts + runbook steps).
+    // Trusted users read so threads are visible. Editors/admins can CREATE
+    // a comment, but only with their own email as the author and an
+    // allowed entityType. Authors can UPDATE their own comment body (the
+    // immutable fields are pinned). Admins or the comment author can DELETE.
+    match /kundeplanComments/{commentId} {
+      allow read: if isTrustedUser();
+
+      allow create: if isEditorUser()
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.author.email == callerEmail()
+        && request.resource.data.entityType in ['part', 'runbookStep']
+        && request.resource.data.entityId is string
+        && request.resource.data.entityId.size() > 0
+        && request.resource.data.planId is string
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 4000;
+
+      allow update: if isEditorUser()
+        && resource.data.author.email == callerEmail()
+        && request.resource.data.author.email == resource.data.author.email
+        && request.resource.data.schemaVersion == resource.data.schemaVersion
+        && request.resource.data.entityType == resource.data.entityType
+        && request.resource.data.entityId == resource.data.entityId
+        && request.resource.data.planId == resource.data.planId
+        && request.resource.data.entityKey == resource.data.entityKey
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 4000;
+
+      allow delete: if isAdminUser()
+        || (isEditorUser() && resource.data.author.email == callerEmail());
+    }
+
     // Default deny everything else.
     match /{document=**} {
       allow read, write: if false;

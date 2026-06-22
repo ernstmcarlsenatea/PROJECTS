@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import { getPartsMap, getResolvedPart } from './graph.js';
 import { createRunbookStore } from './firebaseStore.js';
 import { FEATURE_FLAGS } from './featureFlags.js';
+import { CommentsThread } from './CommentsThread.jsx';
 
 const RUNBOOK_CONFIG_KEY = 'kundeplan-runbook-config-v1';
 
@@ -139,7 +140,7 @@ function formatDate(value) {
   return value;
 }
 
-export function RunbookPage({ parts, canEdit = false, onAuditEvent, planId }) {
+export function RunbookPage({ parts, canEdit = false, onAuditEvent, planId, callerEmail, callerDisplayName, isAdmin = false }) {
   const [config, setConfig] = useState(() => loadRunbookConfig());
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterOwner, setFilterOwner] = useState('all');
@@ -903,6 +904,19 @@ export function RunbookPage({ parts, canEdit = false, onAuditEvent, planId }) {
                           : <p className="runbook-notes-empty">No procedure notes yet.{canEdit ? ' Click "Add notes" to document how to execute this step.' : ''}</p>
                       )}
                     </div>
+
+                    {FEATURE_FLAGS.comments ? (
+                      <CommentsThread
+                        planId={planId}
+                        entityType="runbookStep"
+                        entityId={part.id}
+                        callerEmail={callerEmail}
+                        callerDisplayName={callerDisplayName ?? ''}
+                        isAdmin={isAdmin}
+                        canComment={canEdit}
+                        onAuditEvent={onAuditEvent}
+                      />
+                    ) : null}
                   </div>
                 )}
               </li>

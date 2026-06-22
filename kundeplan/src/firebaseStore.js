@@ -2,6 +2,7 @@ import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getFirestore,
@@ -11,6 +12,8 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
+  where,
 } from 'firebase/firestore';
 
 // Bootstrap super-admin. This email always has admin rights even if no
@@ -24,6 +27,8 @@ const AUDIT_COLLECTION = 'kundeplanAudit';
 const AUDIT_SCHEMA_VERSION = 1;
 const PLANS_DOC_PATH = ['kundeplanPlans', 'registry'];
 const PLANS_SCHEMA_VERSION = 1;
+const COMMENTS_COLLECTION = 'kundeplanComments';
+const COMMENTS_SCHEMA_VERSION = 1;
 
 // Phase 4: the "default" plan continues to read/write the existing
 // kundeplanStates/shared and kundeplanRunbook/shared docs so no migration is
@@ -862,3 +867,140 @@ export function createPlansStore() {
     },
   };
 }
+
+// Phase 5: per-entity comments. Single collection with one doc per comment.
+// Threads are filtered by a composite `entityKey` so we never need a Firestore
+// composite index: a single equality filter is enough and sorting happens on
+// the client (typical thread is small).
+export const COMMENT_ENTITY_TYPES = Object.freeze({
+  PART: 'part',
+  RUNBOOK_STEP: 'runbookStep',
+});
+
+export function getCommentEntityKey({ planId, entityType, entityId }) {
+  const p = planId || DEFAULT_PLAN_ID;
+  return `${p}::${entityType}::${entityId}`;
+}
+
+function readCommentDoc(snapDoc) {
+  const data = snapDoc.data() ?? {};
+  return {
+    id: snapDoc.id,
+    schemaVersion: data.schemaVersion ?? null,
+    planId: typeof data.planId === 'string' ? data.planId : DEFAULT_PLAN_ID,
+    entityType: typeof data.entityType === 'string' ? data.entityType : '',
+    entityId: typeof data.entityId === 'string' ? data.entityId : '',
+    entityKey: typeof data.entityKey === 'string' ? data.entityKey : '',
+    body: typeof data.body === 'string' ? data.body : '',
+    author: data.author && typeof data.author === 'object'
+      ? { email: data.author.email ?? '', displayName: data.author.displayName ?? '' }
+      : { email: '', displayName: '' },
+    createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : null,
+    editedAt: data.editedAt?.toDate ? data.editedAt.toDate() : null,
+  };
+}
+
+export function createCommentsStore() {
+  const db = getDb();
+
+  if (!db) {
+    return {
+      enabled: false,
+      schemaVersion: COMMENTS_SCHEMA_VERSION,
+      async addComment() { throw new Error('Firebase is not configured.'); },
+      async updateComment() { throw new Error('Firebase is not configured.'); },
+      async deleteComment() { throw new Error('Firebase is not configured.'); },
+      subscribeThread() { return () => {}; },
+    };
+  }
+
+  const commentsCol = collection(db, COMMENTS_COLLECTION);
+  let cloudAvailable = true;
+
+  return {
+    enabled: true,
+    schemaVersion: COMMENTS_SCHEMA_VERSION,
+
+    async addComment({ planId, entityType, entityId, body, author }) {
+      if (!cloudAvailable) return null;
+      const trimmed = typeof body === 'string' ? body.trim() : '';
+      if (!trimmed) throw new Error('Comment body is required.');
+      if (trimmed.length > 4000) throw new Error('Comment is too long (max 4000 characters).');
+      const authorEmail = normalizeEmail(author?.email);
+      if (!authorEmail) throw new Error('Sign-in required to comment.');
+      const safePlanId = planId || DEFAULT_PLAN_ID;
+      const safeEntityType = entityType in COMMENT_ENTITY_TYPES_BY_VALUE ? entityType : null;
+      if (!safeEntityType) throw new Error('Unknown entity type for comment.');
+      if (!entityId || typeof entityId !== 'string') throw new Error('Missing entityId for comment.');
+
+      const ref = await addDoc(commentsCol, {
+        schemaVersion: COMMENTS_SCHEMA_VERSION,
+        planId: safePlanId,
+        entityType: safeEntityType,
+        entityId,
+        entityKey: getCommentEntityKey({ planId: safePlanId, entityType: safeEntityType, entityId }),
+        body: trimmed,
+        author: {
+          email: authorEmail,
+          displayName: typeof author?.displayName === 'string' ? author.displayName.slice(0, 200) : '',
+        },
+        createdAt: serverTimestamp(),
+        editedAt: null,
+      });
+      return ref.id;
+    },
+
+    async updateComment(commentId, { body }) {
+      if (!cloudAvailable) return null;
+      const trimmed = typeof body === 'string' ? body.trim() : '';
+      if (!trimmed) throw new Error('Comment body is required.');
+      if (trimmed.length > 4000) throw new Error('Comment is too long (max 4000 characters).');
+      await updateDoc(doc(db, COMMENTS_COLLECTION, commentId), {
+        body: trimmed,
+        editedAt: serverTimestamp(),
+      });
+      return commentId;
+    },
+
+    async deleteComment(commentId) {
+      if (!cloudAvailable) return null;
+      await deleteDoc(doc(db, COMMENTS_COLLECTION, commentId));
+      return commentId;
+    },
+
+    subscribeThread({ planId, entityType, entityId }, onChange, onError) {
+      if (!cloudAvailable) {
+        onChange?.([]);
+        return () => {};
+      }
+      const key = getCommentEntityKey({ planId, entityType, entityId });
+      const q = query(commentsCol, where('entityKey', '==', key));
+      return onSnapshot(
+        q,
+        (snap) => {
+          const items = [];
+          snap.forEach((d) => items.push(readCommentDoc(d)));
+          // Client-side sort avoids needing a composite Firestore index.
+          items.sort((a, b) => {
+            const ta = a.createdAt?.getTime?.() ?? 0;
+            const tb = b.createdAt?.getTime?.() ?? 0;
+            return ta - tb;
+          });
+          onChange?.(items);
+        },
+        (error) => {
+          if (isMissingDefaultDatabaseError(error)) {
+            cloudAvailable = false;
+            return;
+          }
+          if (typeof onError === 'function') onError(error);
+          else console.warn('Comments subscription failed:', error);
+        },
+      );
+    },
+  };
+}
+
+const COMMENT_ENTITY_TYPES_BY_VALUE = Object.freeze(
+  Object.fromEntries(Object.values(COMMENT_ENTITY_TYPES).map((v) => [v, true])),
+);

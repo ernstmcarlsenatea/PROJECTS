@@ -23,8 +23,9 @@ export const FEATURE_FLAGS = Object.freeze({
   // Switching plans triggers a page reload; templates, users, and audit log
   // remain global. Disable to revert to a single shared plan.
   multiPlan: true,
-  // Phase 5 (not implemented yet)
-  comments: false,
+  // Phase 5 — per-entity comments on parts and runbook steps.
+  // Editors/admins can post; authors can edit own; admins or author can delete.
+  comments: true,
 });
 
 export function isFeatureEnabled(name) {

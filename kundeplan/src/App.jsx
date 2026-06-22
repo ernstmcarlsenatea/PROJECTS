@@ -10,6 +10,9 @@ import { FEATURE_FLAGS, SCHEMA_VERSION } from './featureFlags.js';
 // Rollback path: `git revert` the Phase 1 commit.
 const RunbookPage = lazy(() => import('./RunbookPage.jsx').then((m) => ({ default: m.RunbookPage })));
 const TemplatesPage = lazy(() => import('./TemplatesPage.jsx').then((m) => ({ default: m.TemplatesPage })));
+// Phase 5: lazy-load comments thread so the comments code only loads for
+// signed-in users actually viewing an entity.
+const CommentsThread = lazy(() => import('./CommentsThread.jsx').then((m) => ({ default: m.CommentsThread })));
 
 function PageLoadingFallback({ label }) {
   return (
@@ -2405,7 +2408,15 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
       {currentPage === 'runbook' ? (
         <Suspense fallback={<PageLoadingFallback label="runbook" />}>
-          <RunbookPage parts={state.parts} canEdit={canEditRunbook} onAuditEvent={recordAudit} planId={activePlanId} />
+          <RunbookPage
+            parts={state.parts}
+            canEdit={canEditRunbook}
+            onAuditEvent={recordAudit}
+            planId={activePlanId}
+            callerEmail={callerEmail}
+            callerDisplayName={activeAccount?.name ?? ''}
+            isAdmin={isAdmin}
+          />
         </Suspense>
       ) : null}
 
@@ -3236,6 +3247,21 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               )}
             </div>
           </div>
+
+          {FEATURE_FLAGS.comments && draft && state.parts.some((part) => part.id === draft.id) ? (
+            <Suspense fallback={<div className="comments-note">Loading comments…</div>}>
+              <CommentsThread
+                planId={activePlanId}
+                entityType="part"
+                entityId={draft.id}
+                callerEmail={callerEmail}
+                callerDisplayName={activeAccount?.name ?? ''}
+                isAdmin={isAdmin}
+                canComment={canEditRunbook}
+                onAuditEvent={recordAudit}
+              />
+            </Suspense>
+          ) : null}
         </aside>
       </section>
       ) : null}
