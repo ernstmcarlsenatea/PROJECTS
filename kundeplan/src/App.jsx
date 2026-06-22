@@ -3863,14 +3863,19 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     { id: 'guide-nav', label: 'Page navigation' },
                     { id: 'guide-blueprint', label: 'Blueprint map (the graph)' },
                     { id: 'guide-inspector', label: 'Inspector (right panel)' },
+                    { id: 'guide-comments', label: 'Comments threads' },
                     { id: 'guide-runbook', label: 'Runbook page' },
                     { id: 'guide-templates', label: 'Templates (shared repository)' },
                     { id: 'guide-catalog', label: 'Catalog (parts grouped by residence)' },
+                    { id: 'guide-search', label: 'Search & filter' },
                     { id: 'guide-summary', label: 'Plan summary' },
+                    { id: 'guide-plans', label: 'Plans (multi-plan, admin only)' },
                     { id: 'guide-cloud', label: 'Cloud sync (Firebase)' },
                     { id: 'guide-users', label: 'Users & roles (admin only)' },
+                    { id: 'guide-activity', label: 'Activity log (admin only)' },
                     { id: 'guide-stats', label: 'Statistics (admin only)' },
                     { id: 'guide-versions', label: 'Versions' },
+                    { id: 'guide-offline', label: 'Offline & install (PWA)' },
                     { id: 'guide-tips', label: 'Tips' },
                     { id: 'guide-keyboard', label: 'Keyboard & accessibility' },
                   ].map((item) => (
@@ -3928,9 +3933,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <h3>3. Top bar (hero) actions</h3>
                 <ul>
                   <li><strong>User guide</strong> — opens this document.</li>
+                  <li><strong>Offline pill</strong> — appears only when your browser reports it is offline. Your edits keep working and are queued; they sync automatically the next time you reconnect (see section 19).</li>
+                  <li><strong>Plan selector</strong> — when more than one plan exists, a <em>Plan</em> dropdown appears. Switching plans reloads the page so the blueprint, runbook, and comments swap to the chosen plan (see section 13). Admins manage the list of plans from the <em>Plans</em> panel further down.</li>
                   <li><strong>Save version</strong> — stores a labelled snapshot of the current plan you can restore later.</li>
                   <li><strong>Version badge (v…)</strong> — shows how many versions you have saved.</li>
-                  <li><strong>Sign in / Sign out</strong> — when SSO is enabled, the signed-in user appears here along with their role badge.</li>
+                  <li><strong>Role pill</strong> — shows whether you are Super-admin, Admin, or Read-only.</li>
+                  <li><strong>Sign in / Sign out</strong> — when SSO is enabled, the signed-in user appears here.</li>
                 </ul>
               </section>
 
@@ -3939,8 +3947,8 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <p>Three tabs sit directly below the header:</p>
                 <ul>
                   <li><strong>Blueprint map</strong> — interactive graph editor (see section 5).</li>
-                  <li><strong>Runbook</strong> — execution checklist derived from the blueprint (see section 7).</li>
-                  <li><strong>Templates</strong> — shared template repository (see section 8).</li>
+                  <li><strong>Runbook</strong> — execution checklist derived from the blueprint (see section 8).</li>
+                  <li><strong>Templates</strong> — shared template repository (see section 9).</li>
                 </ul>
               </section>
 
@@ -4007,10 +4015,39 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   <li><strong>Clear source</strong> — detaches this part from its current source without deleting it.</li>
                 </ul>
                 <p>The lower detail view summarises the part's resolved values, source chain, and dependencies for quick reference.</p>
+                <p>
+                  When comments are enabled, a <strong>Comments</strong> thread appears below the
+                  details for any saved part — unsaved drafts do not show a thread until they are
+                  saved at least once. See section 7 for how to use it.
+                </p>
+              </section>
+
+              <section id="guide-comments">
+                <h3>7. Comments threads</h3>
+                <p>
+                  Comments give you a per-entity discussion thread that everyone in the plan can
+                  read. Threads exist in two places:
+                </p>
+                <ul>
+                  <li><strong>On a part</strong> — open the Inspector for any saved part; the thread sits below the resolved details.</li>
+                  <li><strong>On a runbook step</strong> — expand the step on the Runbook page; the thread appears beneath the procedure notes.</li>
+                </ul>
+                <p>Permissions:</p>
+                <ul>
+                  <li><strong>Read</strong> — every signed-in user (viewer, editor, admin).</li>
+                  <li><strong>Post</strong> — admins and editors. Viewers see the thread but cannot post.</li>
+                  <li><strong>Edit own comment</strong> — only the comment's author. Edited comments show <em>(edited)</em>.</li>
+                  <li><strong>Delete</strong> — the author of the comment, or any admin.</li>
+                </ul>
+                <p>
+                  Threads are scoped per plan, so the same part in two different plans has two
+                  independent threads. Each post is capped at 4 000 characters. Every comment
+                  action is recorded in the Activity log (section 16).
+                </p>
               </section>
 
               <section id="guide-runbook">
-                <h3>7. Runbook page</h3>
+                <h3>8. Runbook page</h3>
                 <p>
                   The Runbook is generated automatically from the blueprint. Every part becomes
                   one step, ordered by a topological sort that respects both source links and
@@ -4043,12 +4080,14 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </ul>
                 <p>
                   All edits sync to Firebase in real time — everyone with access sees the same
-                  state. Viewers see the runbook in read-only mode.
+                  state. Viewers see the runbook in read-only mode. Each expanded step also shows
+                  a <strong>Comments</strong> thread (section 7) so you can discuss execution
+                  details inline.
                 </p>
               </section>
 
               <section id="guide-templates">
-                <h3>8. Templates (shared repository)</h3>
+                <h3>9. Templates (shared repository)</h3>
                 <p>
                   The Templates page is a shared repository of named snapshots that bundle the
                   entire blueprint (parts, sources, dependencies, positions) <em>plus</em> the
@@ -4079,7 +4118,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               </section>
 
               <section id="guide-catalog">
-                <h3>9. Catalog (parts grouped by residence)</h3>
+                <h3>10. Catalog (parts grouped by residence)</h3>
                 <p>
                   A compact, scannable list of every part, grouped by where it resides. Click any
                   entry to load it in the Inspector. A <strong>Search</strong> box in the catalog
@@ -4091,13 +4130,57 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </p>
               </section>
 
+              <section id="guide-search">
+                <h3>11. Search &amp; filter (across pages)</h3>
+                <p>
+                  Both the Catalog (section 10) and the Runbook (section 8) have a search box and
+                  dropdown filters at the top of the list. Searches are case-insensitive substring
+                  matches and run live as you type. The Runbook also exposes Status / Owner /
+                  Assignee / Residence dropdowns; the pill above the list reports how many of the
+                  total steps are currently visible.
+                </p>
+                <p>
+                  Search state is local to your browser session — it never affects what other
+                  users see.
+                </p>
+              </section>
+
               <section id="guide-summary">
-                <h3>10. Plan summary</h3>
+                <h3>12. Plan summary</h3>
                 <p>The stats row beneath the catalog shows the totals (parts, sources, dependencies, etc.) for the current plan.</p>
               </section>
 
+              <section id="guide-plans">
+                <h3>13. Plans (multi-plan, admin only)</h3>
+                <p>
+                  Each <strong>plan</strong> is an independent workspace with its own blueprint,
+                  runbook, and comment threads. The original shared workspace is the
+                  <em> default plan</em>; new plans live alongside it without overwriting anything.
+                  <strong> Users, templates, and the activity log are global</strong> — they apply
+                  to every plan.
+                </p>
+                <h4>Switching plans (everyone)</h4>
+                <p>
+                  When more than one plan exists, the <strong>Plan</strong> dropdown appears in the
+                  hero. Picking another plan reloads the page so the blueprint, runbook, and
+                  comments are swapped to the chosen plan. Your active plan is remembered per
+                  browser.
+                </p>
+                <h4>Managing plans (admin only)</h4>
+                <p>The <strong>Plans</strong> panel (lower on the page, admin-only) lets you:</p>
+                <ul>
+                  <li><strong>Create plan</strong> — name + optional description. The new plan starts empty; switching to it loads a blank canvas.</li>
+                  <li><strong>Rename</strong> — change a plan's name or description.</li>
+                  <li><strong>Delete</strong> — removes the plan and its blueprint + runbook docs. Comments and audit history for the deleted plan stay in Firestore as historical record. The default plan cannot be deleted.</li>
+                </ul>
+                <p>
+                  Tip: use templates (section 9) to seed a new plan with a known-good blueprint
+                  and runbook configuration.
+                </p>
+              </section>
+
               <section id="guide-cloud">
-                <h3>11. Cloud sync (Firebase)</h3>
+                <h3>14. Cloud sync (Firebase)</h3>
                 <p>
                   Available to admins only. The blueprint, runbook, users, and templates all sync
                   to Firebase automatically — every signed-in user reads from the same shared
@@ -4113,7 +4196,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               </section>
 
               <section id="guide-users">
-                <h3>12. Users &amp; roles (admin only)</h3>
+                <h3>15. Users &amp; roles (admin only)</h3>
                 <p>
                   The Users panel lists everyone in the registry along with their role. Admins can:
                 </p>
@@ -4129,8 +4212,29 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 </p>
               </section>
 
+              <section id="guide-activity">
+                <h3>16. Activity log (admin only)</h3>
+                <p>
+                  The <strong>Activity</strong> panel is an append-only audit feed of the last 50
+                  events written by admins and editors. Each row shows the event type, a short
+                  human-readable summary, when it happened, and who did it.
+                </p>
+                <p>Event categories you will see:</p>
+                <ul>
+                  <li><strong>user.*</strong> — user added, role changed, removed.</li>
+                  <li><strong>template.*</strong> — template saved, applied, renamed, deleted, imported.</li>
+                  <li><strong>runbook.*</strong> — status / assignee / due date / notes changes and runbook resets.</li>
+                  <li><strong>plan.*</strong> — plan created, renamed, deleted.</li>
+                  <li><strong>comment.*</strong> — comment added, edited, deleted.</li>
+                </ul>
+                <p>
+                  Events are immutable: no one (not even an admin) can edit or delete an audit
+                  row. The feed lives in its own Firestore collection with strict security rules.
+                </p>
+              </section>
+
               <section id="guide-stats">
-                <h3>13. Statistics (admin only)</h3>
+                <h3>17. Statistics (admin only)</h3>
                 <p>The Statistics panel shows four live cards driven by the cloud data:</p>
                 <ul>
                   <li><strong>Users</strong> — total user count plus breakdown by role.</li>
@@ -4141,17 +4245,47 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               </section>
 
               <section id="guide-versions">
-                <h3>14. Versions</h3>
+                <h3>18. Versions</h3>
                 <ul>
                   <li>Use <strong>Save version</strong> in the hero to snapshot the current plan locally.</li>
                   <li>The version counter increments with each save (e.g. v3).</li>
                   <li>"Recover latest local backup" in Cloud sync uploads your most recent saved version to the cloud.</li>
-                  <li>For shareable snapshots across users, save a <strong>template</strong> instead (section 8) — versions are local, templates are cloud-wide.</li>
+                  <li>For shareable snapshots across users, save a <strong>template</strong> instead (section 9) — versions are local, templates are cloud-wide.</li>
+                </ul>
+              </section>
+
+              <section id="guide-offline">
+                <h3>19. Offline &amp; install (PWA)</h3>
+                <p>
+                  Kundeplan installs as a Progressive Web App and works offline.
+                </p>
+                <h4>Offline behaviour</h4>
+                <ul>
+                  <li>The app shell (HTML, CSS, JavaScript, icons) is cached the first time you open the deployed site, so subsequent loads work with no network.</li>
+                  <li>Firestore reads come from an on-device IndexedDB cache when you are offline. Writes (edits, comments, status changes) are queued and flushed automatically the next time you reconnect.</li>
+                  <li>The <strong>Offline</strong> pill in the hero appears whenever your browser reports it has no network. It disappears as soon as you are online again.</li>
+                </ul>
+                <h4>Installing the app</h4>
+                <ul>
+                  <li><strong>Chrome / Edge (desktop)</strong> — use the install icon in the address bar, or the menu &rarr; <em>Install Kundeplan…</em>.</li>
+                  <li><strong>iOS Safari</strong> — Share &rarr; <em>Add to Home Screen</em>.</li>
+                  <li><strong>Android Chrome</strong> — menu &rarr; <em>Install app</em>.</li>
+                </ul>
+                <p>
+                  Once installed, the app runs in its own window with the standard browser UI
+                  hidden. Updates are picked up automatically the next time you load the app while
+                  online.
+                </p>
+                <h4>Caveats</h4>
+                <ul>
+                  <li>Sign-in (Microsoft Entra) requires network the first time. After that, your session is kept by the browser.</li>
+                  <li>If two users edit the same document while one is offline, the online change wins; the queued offline write is applied on top when the offline user reconnects.</li>
+                  <li>In private/incognito mode IndexedDB may be blocked. The app falls back to network-only Firestore and the offline cache is disabled.</li>
                 </ul>
               </section>
 
               <section id="guide-tips">
-                <h3>15. Tips</h3>
+                <h3>20. Tips</h3>
                 <ul>
                   <li>Drag nodes to organise the map; layout positions are persisted.</li>
                   <li>Use Source links sparingly — they create inheritance, so changes flow downstream.</li>
@@ -4159,11 +4293,13 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   <li>Export at High quality before sharing for printing or large screens.</li>
                   <li>Save a template before sweeping changes so you can roll back for everyone with one click.</li>
                   <li>Use the runbook to track execution; use the blueprint to track structure.</li>
+                  <li>Spin up a new plan (admin → Plans panel) to scope a fresh blueprint and runbook to one customer without touching anyone else's work.</li>
+                  <li>Pin discussion to where it belongs — comment on the blueprint part for design decisions, on the runbook step for execution issues.</li>
                 </ul>
               </section>
 
               <section id="guide-keyboard">
-                <h3>16. Keyboard &amp; accessibility</h3>
+                <h3>21. Keyboard &amp; accessibility</h3>
                 <ul>
                   <li>Both per-node popouts (Connections ↘ and Part actions ✎) respond to keyboard focus. Use <kbd>Tab</kbd> to focus the icon, then <kbd>Enter</kbd> or <kbd>Space</kbd> on each menu item.</li>
                   <li>Press <kbd>Esc</kbd> to close any open popout, the user guide, or the template preview.</li>
