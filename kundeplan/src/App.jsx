@@ -3,7 +3,7 @@ import { toCanvas as htmlToCanvas } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
-import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, createAuditStore, AUDIT_EVENT_TYPES, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
 import { FEATURE_FLAGS, SCHEMA_VERSION } from './featureFlags.js';
 
 // Phase 1: lazy-load secondary pages so they don't bloat the initial bundle.
@@ -368,6 +368,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const adminStore = useMemo(() => createAdminStore(), []);
   const userStore = useMemo(() => createUserStore(), []);
   const statsRunbookStore = useMemo(() => createRunbookStore(), []);
+  const auditStore = useMemo(() => createAuditStore(), []);
   const [adminEmails, setAdminEmails] = useState([]);
   const [adminError, setAdminError] = useState(null);
   const [adminBusy, setAdminBusy] = useState(false);
@@ -376,8 +377,61 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [editingUserEmail, setEditingUserEmail] = useState(null);
   const [editingUserDraft, setEditingUserDraft] = useState(null);
   const [runbookConfigForStats, setRunbookConfigForStats] = useState({});
+  const [auditEvents, setAuditEvents] = useState([]);
+  const [auditLoaded, setAuditLoaded] = useState(false);
 
   const callerEmail = activeAccount?.username ?? null;
+
+  // Phase 3 audit log: stable callback to append events. Caller never has to
+  // worry about feature-flag state, store availability, or errors — the
+  // helper resolves all of that and never throws.
+  const recordAudit = useMemo(() => {
+    if (!FEATURE_FLAGS.auditLog) {
+      return async () => null;
+    }
+    return async (type, summary, details) => {
+      if (!auditStore.enabled) return null;
+      if (!callerEmail) return null;
+      try {
+        return await auditStore.record({
+          type,
+          summary,
+          actor: {
+            email: callerEmail,
+            displayName: activeAccount?.name ?? '',
+          },
+          details,
+        });
+      } catch (err) {
+        // Audit must never break a foreground operation.
+        console.warn('recordAudit failed:', err);
+        return null;
+      }
+    };
+  }, [auditStore, callerEmail, activeAccount?.name]);
+
+  // Phase 3 audit log: subscribe to the most recent events for the Activity
+  // panel. Subscription is created once per store and only when the flag is on.
+  useEffect(() => {
+    if (!FEATURE_FLAGS.auditLog || !auditStore.enabled) {
+      setAuditLoaded(true);
+      return undefined;
+    }
+    const unsubscribe = auditStore.subscribeRecent(
+      50,
+      (events) => {
+        setAuditEvents(events);
+        setAuditLoaded(true);
+      },
+      (error) => {
+        console.warn('Audit subscription failed:', error);
+        setAuditLoaded(true);
+      },
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [auditStore]);
 
   // Effective users: prefer the new user registry; fall back to legacy admin
   // list so existing installations keep working before a save happens.
@@ -1541,6 +1595,11 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         console.error('Failed to apply runbook config from template:', error);
       }
     }
+    recordAudit(
+      AUDIT_EVENT_TYPES.TEMPLATE_APPLY,
+      `Applied template “${templateName || 'unnamed'}” (${normalized.parts.length} parts, ${Object.keys(runbookConfig ?? {}).length} runbook steps)`,
+      { templateName: templateName || null, partsCount: normalized.parts.length, stepsCount: Object.keys(runbookConfig ?? {}).length },
+    );
     setCloudActionStatus('idle');
     setCloudActionError(null);
     if (templateName) {
@@ -1837,6 +1896,11 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         },
       ];
       await userStore.saveUsers(nextUsers);
+      recordAudit(
+        AUDIT_EVENT_TYPES.USER_ADD,
+        `Added user ${email} as ${userDraft.role || 'viewer'}`,
+        { email, role: userDraft.role || 'viewer', displayName: (userDraft.displayName || '').trim() },
+      );
       setUserDraft({ email: '', role: 'viewer', displayName: '' });
     } catch (error) {
       console.error('Add user failed:', error);
@@ -1861,6 +1925,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setAdminBusy(true);
     setAdminError(null);
     try {
+      const previous = effectiveUsers.find((u) => u.email === editingUserEmail) ?? null;
       const nextUsers = effectiveUsers.map((u) =>
         u.email === editingUserEmail
           ? {
@@ -1871,6 +1936,24 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
           : u,
       );
       await userStore.saveUsers(nextUsers);
+      const newRole = editingUserDraft.role || previous?.role || '';
+      const newName = (editingUserDraft.displayName || '').trim();
+      const roleChanged = previous && previous.role !== newRole;
+      const nameChanged = previous && (previous.displayName || '') !== newName;
+      const changes = [];
+      if (roleChanged) changes.push(`role ${previous.role} → ${newRole}`);
+      if (nameChanged) changes.push(`displayName “${previous.displayName || ''}” → “${newName}”`);
+      if (changes.length > 0) {
+        recordAudit(
+          roleChanged && !nameChanged ? AUDIT_EVENT_TYPES.USER_ROLE : AUDIT_EVENT_TYPES.USER_UPDATE,
+          `Updated ${editingUserEmail}: ${changes.join(', ')}`,
+          {
+            email: editingUserEmail,
+            previous: { role: previous?.role, displayName: previous?.displayName },
+            next: { role: newRole, displayName: newName },
+          },
+        );
+      }
       cancelEditUser();
     } catch (error) {
       console.error('Save user failed:', error);
@@ -1885,8 +1968,16 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setAdminBusy(true);
     setAdminError(null);
     try {
+      const previous = effectiveUsers.find((u) => u.email === email) ?? null;
       const nextUsers = effectiveUsers.map((u) => (u.email === email ? { ...u, role } : u));
       await userStore.saveUsers(nextUsers);
+      if (previous && previous.role !== role) {
+        recordAudit(
+          AUDIT_EVENT_TYPES.USER_ROLE,
+          `Changed role for ${email}: ${previous.role} → ${role}`,
+          { email, previousRole: previous.role, newRole: role },
+        );
+      }
     } catch (error) {
       console.error('Update role failed:', error);
       setAdminError(error?.message ?? String(error));
@@ -1905,8 +1996,14 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setAdminBusy(true);
     setAdminError(null);
     try {
+      const removed = effectiveUsers.find((u) => u.email === email) ?? null;
       const nextUsers = effectiveUsers.filter((u) => u.email !== email);
       await userStore.saveUsers(nextUsers);
+      recordAudit(
+        AUDIT_EVENT_TYPES.USER_REMOVE,
+        `Removed user ${email}${removed?.role ? ` (was ${removed.role})` : ''}`,
+        { email, previousRole: removed?.role ?? null, previousDisplayName: removed?.displayName ?? '' },
+      );
     } catch (error) {
       console.error('Delete user failed:', error);
       setAdminError(error?.message ?? String(error));
@@ -2102,7 +2199,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
       {currentPage === 'runbook' ? (
         <Suspense fallback={<PageLoadingFallback label="runbook" />}>
-          <RunbookPage parts={state.parts} canEdit={canEditRunbook} />
+          <RunbookPage parts={state.parts} canEdit={canEditRunbook} onAuditEvent={recordAudit} />
         </Suspense>
       ) : null}
 
@@ -2115,6 +2212,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             canApply={isAdmin}
             callerEmail={callerEmail}
             onApplyTemplate={applyTemplate}
+            onAuditEvent={recordAudit}
           />
         </Suspense>
       ) : null}
@@ -3187,6 +3285,50 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         {adminError ? (
           <span className="cloud-status-error" title={adminError}>{adminError}</span>
         ) : null}
+      </section>
+      ) : null}
+
+      {isAdmin && FEATURE_FLAGS.auditLog ? (
+      <section className="panel cloud-panel admin-panel audit-panel">
+        <div className="panel-header cloud-panel-header">
+          <div>
+            <p className="panel-kicker">Activity</p>
+            <h2>Recent audit events</h2>
+            <p className="panel-note">
+              Append-only log of user, template, and runbook changes (last 50). Events are written
+              by everyone with editor or admin rights and cannot be modified or deleted.
+            </p>
+          </div>
+        </div>
+
+        {!auditStore.enabled ? (
+          <p className="panel-note">Firebase is not configured — audit log unavailable.</p>
+        ) : !auditLoaded ? (
+          <p className="panel-note">Loading recent activity…</p>
+        ) : auditEvents.length === 0 ? (
+          <p className="panel-note">No activity yet. Events will appear here as users make changes.</p>
+        ) : (
+          <ul className="audit-list">
+            {auditEvents.map((event) => {
+              const ts = event.createdAt ? new Date(event.createdAt) : null;
+              const tsLabel = ts ? ts.toLocaleString() : 'just now';
+              const category = event.type.split('.')[0] || 'event';
+              return (
+                <li key={event.id} className={`audit-row audit-row-${category}`}>
+                  <div className="audit-row-head">
+                    <span className={`audit-type-pill audit-type-${category}`}>{event.type}</span>
+                    <span className="audit-time" title={ts?.toISOString() ?? ''}>{tsLabel}</span>
+                  </div>
+                  <div className="audit-summary">{event.summary || '(no summary)'}</div>
+                  <div className="audit-actor">
+                    {event.actor?.displayName ? `${event.actor.displayName} · ` : ''}
+                    <span className="audit-actor-email">{event.actor?.email ?? 'unknown'}</span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
       ) : null}
 

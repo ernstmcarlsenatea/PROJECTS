@@ -17,8 +17,8 @@ export const FEATURE_FLAGS = Object.freeze({
   // Phase 1 — bundle splitting is build-time; rollback via `git revert`.
   // Phase 2
   searchAndFilter: true,
-  // Phase 3 (not implemented yet)
-  auditLog: false,
+  // Phase 3 — append-only audit log + Activity panel.
+  auditLog: true,
   // Phase 4 (not implemented yet)
   multiPlan: false,
   // Phase 5 (not implemented yet)

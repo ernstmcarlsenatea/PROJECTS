@@ -210,6 +210,7 @@ export function TemplatesPage({
   canApply,
   callerEmail,
   onApplyTemplate,
+  onAuditEvent,
 }) {
   const store = useMemo(() => createTemplateStore(), []);
   const [templates, setTemplates] = useState([]);
@@ -289,13 +290,20 @@ export function TemplatesPage({
       };
       try {
         await persist([...templates, newTemplate]);
+        if (typeof onAuditEvent === 'function') {
+          onAuditEvent(
+            'template.save',
+            `Saved template “${newTemplate.name}” (${(newTemplate.parts ?? []).length} parts, ${Object.keys(newTemplate.runbookConfig ?? {}).length} runbook steps)`,
+            { templateId: newTemplate.id, name: newTemplate.name, partsCount: (newTemplate.parts ?? []).length, stepsCount: Object.keys(newTemplate.runbookConfig ?? {}).length },
+          );
+        }
         setDraftName('');
         setDraftDescription('');
       } catch {
         /* error already set */
       }
     },
-    [draftName, draftDescription, callerEmail, currentParts, currentRunbookConfig, persist, templates],
+    [draftName, draftDescription, callerEmail, currentParts, currentRunbookConfig, persist, templates, onAuditEvent],
   );
 
   const handleDelete = useCallback(
@@ -306,13 +314,20 @@ export function TemplatesPage({
       if (!ok) return;
       try {
         await persist(templates.filter((t) => t.id !== id));
+        if (typeof onAuditEvent === 'function') {
+          onAuditEvent(
+            'template.delete',
+            `Deleted template “${target.name || '(unnamed)'}”`,
+            { templateId: id, name: target.name || '' },
+          );
+        }
         if (previewId === id) setPreviewId(null);
         if (editingId === id) setEditingId(null);
       } catch {
         /* error already set */
       }
     },
-    [persist, templates, previewId, editingId],
+    [persist, templates, previewId, editingId, onAuditEvent],
   );
 
   const handleApply = useCallback(
@@ -348,6 +363,7 @@ export function TemplatesPage({
       setError('Template name is required.');
       return;
     }
+    const previous = templates.find((t) => t.id === editingId) ?? null;
     const next = templates.map((t) =>
       t.id === editingId
         ? { ...t, name, description: editingDraft.description.trim() }
@@ -355,11 +371,23 @@ export function TemplatesPage({
     );
     try {
       await persist(next);
+      if (typeof onAuditEvent === 'function' && previous) {
+        const changes = [];
+        if ((previous.name || '') !== name) changes.push(`name “${previous.name || ''}” → “${name}”`);
+        if ((previous.description || '') !== editingDraft.description.trim()) changes.push('description updated');
+        if (changes.length > 0) {
+          onAuditEvent(
+            'template.update',
+            `Updated template “${name}”: ${changes.join(', ')}`,
+            { templateId: editingId, previous: { name: previous.name, description: previous.description }, next: { name, description: editingDraft.description.trim() } },
+          );
+        }
+      }
       cancelEdit();
     } catch {
       /* error already set */
     }
-  }, [editingDraft, editingId, persist, templates, cancelEdit]);
+  }, [editingDraft, editingId, persist, templates, cancelEdit, onAuditEvent]);
 
   const handleImportClick = useCallback(() => {
     if (importRef.current) importRef.current.click();
@@ -388,6 +416,13 @@ export function TemplatesPage({
               : {},
         };
         await persist([...templates, imported]);
+        if (typeof onAuditEvent === 'function') {
+          onAuditEvent(
+            'template.import',
+            `Imported template “${imported.name}” (${(imported.parts ?? []).length} parts)`,
+            { templateId: imported.id, name: imported.name, partsCount: (imported.parts ?? []).length },
+          );
+        }
       } catch (err) {
         console.error('Import failed:', err);
         setError(err?.message ?? String(err));
@@ -395,7 +430,7 @@ export function TemplatesPage({
         if (importRef.current) importRef.current.value = '';
       }
     },
-    [callerEmail, persist, templates],
+    [callerEmail, persist, templates, onAuditEvent],
   );
 
   const currentPartsCount = Array.isArray(currentParts) ? currentParts.length : 0;

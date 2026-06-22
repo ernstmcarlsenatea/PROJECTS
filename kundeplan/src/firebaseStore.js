@@ -1,5 +1,17 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { doc, getDoc, getFirestore, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getFirestore,
+  limit as firestoreLimit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+} from 'firebase/firestore';
 
 // Bootstrap super-admin. This email always has admin rights even if no
 // admins document exists yet, so it can grant admin status to other users.
@@ -8,6 +20,8 @@ const ADMINS_DOC_PATH = ['kundeplanAdmins', 'list'];
 const EDITORS_DOC_PATH = ['kundeplanEditors', 'list'];
 const USERS_DOC_PATH = ['kundeplanUsers', 'list'];
 const TEMPLATES_DOC_PATH = ['kundeplanTemplates', 'list'];
+const AUDIT_COLLECTION = 'kundeplanAudit';
+const AUDIT_SCHEMA_VERSION = 1;
 
 // Available roles. Order = display/sort order.
 export const ROLES = {
@@ -540,6 +554,123 @@ export function createTemplateStore() {
         { merge: true },
       );
       return cleaned;
+    },
+  };
+}
+
+// Phase 3 audit log: append-only event store. Each event is a separate
+// Firestore document in the `kundeplanAudit` collection. Editors (which
+// includes admins) may create events; nobody may update or delete them.
+// Trusted users may read so the Activity panel can render history.
+export const AUDIT_EVENT_TYPES = Object.freeze({
+  USER_ADD: 'user.add',
+  USER_UPDATE: 'user.update',
+  USER_REMOVE: 'user.remove',
+  USER_ROLE: 'user.role',
+  TEMPLATE_SAVE: 'template.save',
+  TEMPLATE_UPDATE: 'template.update',
+  TEMPLATE_DELETE: 'template.delete',
+  TEMPLATE_IMPORT: 'template.import',
+  TEMPLATE_APPLY: 'template.apply',
+  RUNBOOK_STEP_STATUS: 'runbook.step.status',
+  RUNBOOK_RESET: 'runbook.reset',
+});
+
+function sanitizeAuditDetails(details) {
+  if (!details || typeof details !== 'object') return null;
+  // Strip undefined and non-serializable values; cap to a small object.
+  try {
+    const safe = JSON.parse(JSON.stringify(details));
+    return safe && typeof safe === 'object' ? safe : null;
+  } catch {
+    return null;
+  }
+}
+
+export function createAuditStore() {
+  const db = getDb();
+
+  if (!db) {
+    return {
+      enabled: false,
+      async record() {
+        return null;
+      },
+      subscribeRecent() {
+        return () => {};
+      },
+    };
+  }
+
+  const auditCol = collection(db, AUDIT_COLLECTION);
+  let cloudAvailable = true;
+
+  return {
+    enabled: true,
+    schemaVersion: AUDIT_SCHEMA_VERSION,
+    async record({ type, summary, actor, details }) {
+      if (!cloudAvailable) return null;
+      if (!type || typeof type !== 'string') return null;
+      const actorEmail = normalizeEmail(actor?.email);
+      if (!actorEmail) return null;
+      try {
+        const ref = await addDoc(auditCol, {
+          schemaVersion: AUDIT_SCHEMA_VERSION,
+          type,
+          summary: typeof summary === 'string' ? summary.slice(0, 500) : '',
+          actor: {
+            email: actorEmail,
+            displayName: typeof actor?.displayName === 'string' ? actor.displayName.slice(0, 200) : '',
+          },
+          details: sanitizeAuditDetails(details),
+          createdAt: serverTimestamp(),
+        });
+        return ref.id;
+      } catch (error) {
+        if (isMissingDefaultDatabaseError(error)) {
+          cloudAvailable = false;
+          return null;
+        }
+        // Audit must never break a foreground operation — log and swallow.
+        console.warn('Audit event write failed:', error);
+        return null;
+      }
+    },
+    subscribeRecent(maxEvents, onChange, onError) {
+      if (!cloudAvailable) {
+        onChange?.([]);
+        return () => {};
+      }
+      const safeLimit = Math.min(Math.max(parseInt(maxEvents, 10) || 50, 1), 200);
+      const q = query(auditCol, orderBy('createdAt', 'desc'), firestoreLimit(safeLimit));
+      return onSnapshot(
+        q,
+        (snap) => {
+          const events = [];
+          snap.forEach((d) => {
+            const data = d.data() ?? {};
+            events.push({
+              id: d.id,
+              type: typeof data.type === 'string' ? data.type : '',
+              summary: typeof data.summary === 'string' ? data.summary : '',
+              actor: data.actor && typeof data.actor === 'object' ? data.actor : null,
+              details: data.details ?? null,
+              schemaVersion: data.schemaVersion ?? null,
+              // createdAt may be null briefly while server timestamp resolves.
+              createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : null,
+            });
+          });
+          onChange?.(events);
+        },
+        (error) => {
+          if (isMissingDefaultDatabaseError(error)) {
+            cloudAvailable = false;
+            return;
+          }
+          if (typeof onError === 'function') onError(error);
+          else console.warn('Audit subscription failed:', error);
+        },
+      );
     },
   };
 }

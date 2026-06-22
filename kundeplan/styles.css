@@ -3244,3 +3244,72 @@ button:focus-visible {
   font-style: italic;
   font-size: 0.92rem;
 }
+
+/* Phase 3: audit / activity panel */
+.audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.audit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.65rem 0.8rem;
+  background: #fffdf6;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+}
+
+.audit-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.audit-type-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(36, 48, 70, 0.08);
+  color: var(--ink);
+  border: 1px solid var(--outline);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.audit-type-user { background: rgba(31, 120, 180, 0.12); border-color: rgba(31, 120, 180, 0.35); }
+.audit-type-template { background: rgba(255, 165, 0, 0.16); border-color: rgba(255, 140, 0, 0.4); }
+.audit-type-runbook { background: rgba(46, 174, 110, 0.16); border-color: rgba(46, 174, 110, 0.4); }
+
+.audit-time {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-summary {
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.audit-actor {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.audit-actor-email {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+}

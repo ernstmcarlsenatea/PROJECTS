@@ -116,6 +116,22 @@ service cloud.firestore {
       allow write: if isAdminUser();
     }
 
+    // Phase 3 — append-only audit log. Each document is a single event.
+    // Trusted users may read so the Activity panel can render history.
+    // Editors (and admins, since admins satisfy isEditorUser) may CREATE
+    // new events, but only with their own email as the actor and the
+    // expected schema version. Nobody may modify or delete past events.
+    match /kundeplanAudit/{eventId} {
+      allow read: if isTrustedUser();
+      allow create: if isEditorUser()
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.actor.email == callerEmail()
+        && request.resource.data.type is string
+        && request.resource.data.type.size() > 0
+        && request.resource.data.type.size() <= 64;
+      allow update, delete: if false;
+    }
+
     // Default deny everything else.
     match /{document=**} {
       allow read, write: if false;

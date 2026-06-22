@@ -139,7 +139,7 @@ function formatDate(value) {
   return value;
 }
 
-export function RunbookPage({ parts, canEdit = false }) {
+export function RunbookPage({ parts, canEdit = false, onAuditEvent }) {
   const [config, setConfig] = useState(() => loadRunbookConfig());
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterOwner, setFilterOwner] = useState('all');
@@ -348,7 +348,19 @@ export function RunbookPage({ parts, canEdit = false }) {
 
   const updateStepStatus = useCallback((partId, status) => {
     updateStepField(partId, 'status', status);
-  }, [updateStepField]);
+    if (typeof onAuditEvent === 'function') {
+      const part = parts.find((p) => p.id === partId);
+      const previous = config[partId]?.status ?? 'not-started';
+      if (previous !== status) {
+        const label = part?.name || partId;
+        onAuditEvent(
+          'runbook.step.status',
+          `Runbook “${label}”: ${previous} → ${status}`,
+          { partId, partName: label, previousStatus: previous, newStatus: status },
+        );
+      }
+    }
+  }, [updateStepField, onAuditEvent, parts, config]);
 
   const updateStepNotes = useCallback((partId, notes) => {
     updateStepField(partId, 'notes', notes);
@@ -374,10 +386,12 @@ export function RunbookPage({ parts, canEdit = false }) {
   function resetAllStatuses() {
     if (!canEdit) return;
     if (!window.confirm('Reset all step statuses to "Not started"?')) return;
+    let clearedCount = 0;
     setConfig((prev) => {
       const next = { ...prev };
       for (const id of Object.keys(next)) {
         const entry = { ...next[id] };
+        if (entry.status) clearedCount += 1;
         delete entry.status;
         if (Object.keys(entry).length === 0) {
           delete next[id];
@@ -387,6 +401,13 @@ export function RunbookPage({ parts, canEdit = false }) {
       }
       return next;
     });
+    if (typeof onAuditEvent === 'function') {
+      onAuditEvent(
+        'runbook.reset',
+        `Reset all runbook statuses (${clearedCount} steps cleared)`,
+        { clearedCount },
+      );
+    }
   }
 
   function buildRowData() {
