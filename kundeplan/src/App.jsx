@@ -3164,24 +3164,56 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   keeps a single source of truth so updates propagate cleanly between derived
                   parts and their sources.
                 </p>
+                <p>
+                  The app has three working pages plus an admin area:
+                  <strong> Blueprint map</strong> (the graph),
+                  <strong> Runbook</strong> (execution checklist generated from the blueprint),
+                  and <strong>Templates</strong> (a shared repository of saved blueprint + runbook snapshots).
+                  Admins also see <strong>Users &amp; roles</strong> and a live <strong>Statistics</strong> panel.
+                </p>
               </section>
 
               <section>
-                <h3>2. Top bar (hero) actions</h3>
+                <h3>2. Roles &amp; permissions</h3>
+                <p>Every signed-in user has exactly one role:</p>
+                <ul>
+                  <li><strong>Admin</strong> — full access. Edit the blueprint, edit the runbook, manage users, create/apply/delete templates, run cloud sync actions.</li>
+                  <li><strong>Editor</strong> — read-only on the blueprint, but may edit the runbook (status, notes, assignee, due date). Can browse and export templates; cannot create, apply, or delete them.</li>
+                  <li><strong>Viewer</strong> — read-only everywhere. Can browse the blueprint, runbook, and the template repository, and can export templates as JSON / CSV / PDF.</li>
+                </ul>
+                <p>
+                  The super-admin (<code>ernst.magne.carlsen@atea.no</code>) is always treated as an
+                  admin and cannot be demoted or deleted. Only <code>@atea.no</code> accounts with a
+                  verified email can sign in.
+                </p>
+              </section>
+
+              <section>
+                <h3>3. Top bar (hero) actions</h3>
                 <ul>
                   <li><strong>User guide</strong> — opens this document.</li>
                   <li><strong>Save version</strong> — stores a labelled snapshot of the current plan you can restore later.</li>
                   <li><strong>Version badge (v…)</strong> — shows how many versions you have saved.</li>
-                  <li><strong>Sign in / Sign out</strong> — when SSO is enabled, the signed-in user appears here. "Public access" or "SSO not configured" badges describe the current mode.</li>
+                  <li><strong>Sign in / Sign out</strong> — when SSO is enabled, the signed-in user appears here along with their role badge.</li>
                 </ul>
               </section>
 
               <section>
-                <h3>3. Blueprint map (the graph)</h3>
-                <p>The Blueprint map shows every part as a card and every relation as a line.</p>
+                <h3>4. Page navigation</h3>
+                <p>Three tabs sit directly below the header:</p>
+                <ul>
+                  <li><strong>Blueprint map</strong> — interactive graph editor (see section 5).</li>
+                  <li><strong>Runbook</strong> — execution checklist derived from the blueprint (see section 7).</li>
+                  <li><strong>Templates</strong> — shared template repository (see section 8).</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>5. Blueprint map (the graph)</h3>
+                <p>The Blueprint map shows every part as a card and every relation as a line. Admin-only for edits; viewers and editors see it read-only.</p>
                 <h4>Toolbar</h4>
                 <ul>
-                  <li><strong>New part</strong> — creates a blank draft and opens it in the Inspector. The new part is placed at the bottom of the canvas, left-aligned (so the canvas never grows wider). The canvas auto-scrolls to the new spot and the <em>Part name</em> field is focused with a <em>"Start here :-)"</em> bubble.</li>
+                  <li><strong>New part</strong> — creates a blank draft and opens it in the Inspector. The new part is placed at the bottom of the canvas, left-aligned. The canvas auto-scrolls to the new spot and the <em>Part name</em> field is focused with a <em>"Start here :-)"</em> bubble.</li>
                   <li><strong>Undo / Redo</strong> — step through your recent changes.</li>
                   <li><strong>Connection mode</strong> — global default for new links (<em>Dependency</em> or <em>Source</em>). Per-node popouts override this per click.</li>
                   <li><strong>Cancel link</strong> — appears while you are drawing a link; click to abort.</li>
@@ -3203,17 +3235,17 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   </li>
                   <li><strong>Edit handle (✎) — Part actions popout</strong> — just below the link handle. Hover or click to open a second popout with three pill buttons:
                     <ul>
-                      <li><strong>EDIT in inspector</strong> — opens this part in the Inspector and smooth-scrolls the page down to it. The <strong>Part name</strong> field is auto-focused and pulses with a <em>"Start here :-)"</em> bubble for a couple of seconds.</li>
-                      <li><strong>NEW part from here</strong> — opens a blank draft with this part pre-set as its source. The new part is placed at the bottom of the canvas (left-aligned), the canvas auto-scrolls to it, and the Inspector is focused with the <em>Start here</em> hint.</li>
+                      <li><strong>EDIT in inspector</strong> — opens this part in the Inspector and smooth-scrolls the page down to it. The <strong>Part name</strong> field is auto-focused and pulses with a <em>"Start here :-)"</em> bubble.</li>
+                      <li><strong>NEW part from here</strong> — opens a blank draft with this part pre-set as its source. The new part is placed at the bottom of the canvas, the canvas auto-scrolls to it, and the Inspector is focused with the <em>Start here</em> hint.</li>
                       <li><strong>DELETE part</strong> — asks for confirmation, then removes the part; descendants are re-attached to its source where possible.</li>
                     </ul>
                   </li>
                 </ul>
                 <h4>Visual feedback</h4>
                 <ul>
-                  <li><strong>"Start here :-)" bubble</strong> — appears above the <em>Part name</em> field whenever the Inspector is opened from a New/Edit action, telling you exactly where to begin typing.</li>
+                  <li><strong>"Start here :-)" bubble</strong> — appears above the <em>Part name</em> field whenever the Inspector is opened from a New/Edit action.</li>
                   <li><strong>"Saved ✓" bubble</strong> — after pressing <strong>Save part</strong>, the canvas scrolls to centre the saved node and a green pulse + <em>Saved ✓</em> bubble appears above it for a couple of seconds.</li>
-                  <li><strong>Auto-scroll</strong> — actions that open the Inspector smooth-scroll the page down to it; saving a part smooth-scrolls back up to the saved node in the Blueprint map.</li>
+                  <li><strong>Auto-scroll</strong> — actions that open the Inspector smooth-scroll the page down to it; saving a part smooth-scrolls back up to the saved node.</li>
                 </ul>
                 <h4>Reading the lines</h4>
                 <ul>
@@ -3223,7 +3255,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               </section>
 
               <section>
-                <h3>4. Inspector (right panel)</h3>
+                <h3>6. Inspector (right panel)</h3>
                 <p>Use the Inspector to edit the selected part. Fields are:</p>
                 <ul>
                   <li><strong>Name</strong> — required.</li>
@@ -3242,7 +3274,70 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               </section>
 
               <section>
-                <h3>5. Catalog (parts grouped by residence)</h3>
+                <h3>7. Runbook page</h3>
+                <p>
+                  The Runbook is generated automatically from the blueprint. Every part becomes
+                  one step, ordered by a topological sort that respects both source links and
+                  dependencies (a part's prerequisites are always listed before it).
+                </p>
+                <h4>Per-step fields (editable by admins and editors)</h4>
+                <ul>
+                  <li><strong>Status</strong> — Not started · In progress · Done · Skipped. Status changes feed the statistics panel and progress badges.</li>
+                  <li><strong>Assignee</strong> — free-text name or email of the person responsible.</li>
+                  <li><strong>Due date</strong> — picks a date; overdue rows (past due + not done/skipped) are flagged.</li>
+                  <li><strong>Notes</strong> — free-text notes for this step.</li>
+                </ul>
+                <h4>Indicators</h4>
+                <ul>
+                  <li><strong>Blocked</strong> — shown when one of this step's prerequisites is not yet Done or Skipped.</li>
+                  <li><strong>Overdue</strong> — shown when the due date is in the past and the step is not Done/Skipped.</li>
+                  <li><strong>Cloud status badge</strong> — confirms the runbook is synced to Firebase across all users.</li>
+                </ul>
+                <h4>Toolbar</h4>
+                <ul>
+                  <li><strong>Reset</strong> — admins only; clears the per-step state.</li>
+                  <li><strong>Export CSV</strong> — downloads the entire runbook (one row per step) for spreadsheet use.</li>
+                  <li><strong>Export PDF</strong> — generates a printable A4 runbook with all fields.</li>
+                </ul>
+                <p>
+                  All edits sync to Firebase in real time — everyone with access sees the same
+                  state. Viewers see the runbook in read-only mode.
+                </p>
+              </section>
+
+              <section>
+                <h3>8. Templates (shared repository)</h3>
+                <p>
+                  The Templates page is a shared repository of named snapshots that bundle the
+                  entire blueprint (parts, sources, dependencies, positions) <em>plus</em> the
+                  runbook configuration (status, assignee, due date, notes per step). Use them
+                  to preserve known-good states or to reuse a plan across engagements.
+                </p>
+                <h4>What admins can do</h4>
+                <ul>
+                  <li><strong>Save current state as template</strong> — enter a name (required) and an optional description; the current blueprint + runbook are saved to the shared repository.</li>
+                  <li><strong>Import from JSON…</strong> — load a previously exported template file into the repository.</li>
+                  <li><strong>Apply</strong> — replaces the live blueprint and runbook for <em>everyone</em> with the template's contents. A confirmation prompt is shown first.</li>
+                  <li><strong>Rename</strong> — change a template's name or description inline.</li>
+                  <li><strong>Delete</strong> — permanently removes a template (with confirmation).</li>
+                </ul>
+                <h4>What everyone (viewer, editor, admin) can do</h4>
+                <ul>
+                  <li><strong>Browse</strong> — every template shows its name, description, parts count, runbook step count, creator, and timestamp.</li>
+                  <li><strong>Preview</strong> — opens a modal listing all parts and configured runbook steps in the template.</li>
+                  <li><strong>Export JSON</strong> — machine-readable full snapshot (re-importable by an admin).</li>
+                  <li><strong>Export CSV</strong> — flat tabular export of parts and runbook config.</li>
+                  <li><strong>Export PDF</strong> — printable A4 document.</li>
+                </ul>
+                <p>
+                  Applying a template is a destructive action — it overwrites the current
+                  blueprint and runbook for all users. Save a version (or a template) of the
+                  current state first if you want to keep it.
+                </p>
+              </section>
+
+              <section>
+                <h3>9. Catalog (parts grouped by residence)</h3>
                 <p>
                   A compact, scannable list of every part, grouped by where it resides. Click any
                   entry to load it in the Inspector. The catalog header uses a golden-ratio split
@@ -3253,53 +3348,82 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               </section>
 
               <section>
-                <h3>6. Plan summary</h3>
+                <h3>10. Plan summary</h3>
                 <p>The stats row beneath the catalog shows the totals (parts, sources, dependencies, etc.) for the current plan.</p>
               </section>
 
               <section>
-                <h3>7. Cloud sync (Firebase)</h3>
+                <h3>11. Cloud sync (Firebase)</h3>
                 <p>
-                  Available to authorised users only. Sync your local browser data with Firebase
-                  so the same plan is accessible across devices. All three actions are protected
-                  by a password prompt the first time you use them in a browser (the answer is
-                  remembered per browser).
+                  Available to admins only. The blueprint, runbook, users, and templates all sync
+                  to Firebase automatically — every signed-in user reads from the same shared
+                  documents. The manual sync actions below are escape hatches:
                 </p>
                 <ul>
-                  <li><strong>Migrate local to cloud</strong> — uploads this browser's data, overwriting the cloud snapshot for your account.</li>
+                  <li><strong>Migrate local to cloud</strong> — uploads this browser's data, overwriting the cloud snapshot.</li>
                   <li><strong>Restore cloud to local</strong> — downloads the latest cloud snapshot and replaces your local data.</li>
                   <li><strong>Recover latest local backup</strong> — uploads your most recent saved version to the cloud.</li>
                   <li><strong>Cloud user pill</strong> — shows the account in use, or "Firebase not configured".</li>
-                  <li><strong>Status badge</strong> — confirms the result of the last action (uploaded, restored, empty, error, etc.).</li>
+                  <li><strong>Status badge</strong> — confirms the result of the last action.</li>
                 </ul>
               </section>
 
               <section>
-                <h3>8. Versions</h3>
+                <h3>12. Users &amp; roles (admin only)</h3>
+                <p>
+                  The Users panel lists everyone in the registry along with their role. Admins can:
+                </p>
                 <ul>
-                  <li>Use <strong>Save version</strong> in the hero to snapshot the current plan.</li>
+                  <li><strong>Add user</strong> — enter email + display name and pick a role (admin / editor / viewer).</li>
+                  <li><strong>Edit</strong> — change a user's role or display name inline.</li>
+                  <li><strong>Delete</strong> — remove a user from the registry.</li>
+                </ul>
+                <p>
+                  The super-admin row is shown but locked — it cannot be edited or deleted. Saving
+                  changes automatically updates the legacy admin/editor email lists used by the
+                  Firestore security rules, so permissions take effect immediately.
+                </p>
+              </section>
+
+              <section>
+                <h3>13. Statistics (admin only)</h3>
+                <p>The Statistics panel shows four live cards driven by the cloud data:</p>
+                <ul>
+                  <li><strong>Users</strong> — total user count plus breakdown by role.</li>
+                  <li><strong>Blueprint</strong> — totals for parts, root parts, source links, dependencies, owners, and residences.</li>
+                  <li><strong>Runbook progress</strong> — progress bar of % done plus counts for Done / In progress / Skipped / Overdue.</li>
+                  <li><strong>Top assignees</strong> — top five people by number of runbook steps assigned to them.</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>14. Versions</h3>
+                <ul>
+                  <li>Use <strong>Save version</strong> in the hero to snapshot the current plan locally.</li>
                   <li>The version counter increments with each save (e.g. v3).</li>
                   <li>"Recover latest local backup" in Cloud sync uploads your most recent saved version to the cloud.</li>
+                  <li>For shareable snapshots across users, save a <strong>template</strong> instead (section 8) — versions are local, templates are cloud-wide.</li>
                 </ul>
               </section>
 
               <section>
-                <h3>9. Tips</h3>
+                <h3>15. Tips</h3>
                 <ul>
                   <li>Drag nodes to organise the map; layout positions are persisted.</li>
                   <li>Use Source links sparingly — they create inheritance, so changes flow downstream.</li>
                   <li>Use Dependency links to express "needs" relationships without inheritance.</li>
                   <li>Export at High quality before sharing for printing or large screens.</li>
-                  <li>Save a version before making sweeping changes, so you can roll back.</li>
+                  <li>Save a template before sweeping changes so you can roll back for everyone with one click.</li>
+                  <li>Use the runbook to track execution; use the blueprint to track structure.</li>
                 </ul>
               </section>
 
               <section>
-                <h3>10. Keyboard & accessibility</h3>
+                <h3>16. Keyboard &amp; accessibility</h3>
                 <ul>
                   <li>Both per-node popouts (Connections ↘ and Part actions ✎) respond to keyboard focus. Use <kbd>Tab</kbd> to focus the icon, then <kbd>Enter</kbd> or <kbd>Space</kbd> on each menu item.</li>
-                  <li>Press <kbd>Esc</kbd> to close any open popout or the user guide.</li>
-                  <li>Click outside a popout (or move the mouse away) to close it.</li>
+                  <li>Press <kbd>Esc</kbd> to close any open popout, the user guide, or the template preview.</li>
+                  <li>Click outside a popout, modal, or overlay to close it.</li>
                 </ul>
               </section>
             </div>
