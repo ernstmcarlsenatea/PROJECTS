@@ -3,9 +3,10 @@ import { toCanvas as htmlToCanvas } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
-import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
 import { RunbookPage } from './RunbookPage.jsx';
 import { TemplatesPage } from './TemplatesPage.jsx';
+import { FEATURE_FLAGS, SCHEMA_VERSION } from './featureFlags.js';
 
 const colorPalette = ['#ffd84f', '#ffafdc', '#a8f0de', '#b7d6ff', '#ffc79c', '#c9f59d'];
 const NODE_WIDTH = 220;
@@ -1499,6 +1500,54 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setCurrentPage('blueprint');
   }
 
+  // Phase 0 safety-net: download a single JSON snapshot of EVERYTHING
+  // (blueprint, runbook config, users, admin emails, templates, local
+  // versions). Use this before any data-touching change so you always
+  // have a known-good restore point. Admin-only.
+  async function exportEverythingAsJson() {
+    if (!isAdmin) {
+      setCloudActionStatus('unauthorized');
+      return;
+    }
+    setCloudActionStatus('exporting');
+    setCloudActionError(null);
+    try {
+      const templateStore = createTemplateStore();
+      const templates = templateStore.enabled ? await templateStore.loadTemplates() : [];
+      const snapshot = {
+        schemaVersion: SCHEMA_VERSION,
+        exportedAt: new Date().toISOString(),
+        exportedBy: callerEmail ?? '',
+        blueprint: {
+          parts: state.parts,
+          selectedId: state.selectedId,
+        },
+        runbookConfig: runbookConfigForStats ?? {},
+        users,
+        adminEmails,
+        templates,
+        localVersions: loadVersions(),
+        localVersionCount: versionCount,
+      };
+      const json = JSON.stringify(snapshot, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      link.href = url;
+      link.download = `kundeplan-backup-${stamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setCloudActionStatus('exported');
+    } catch (error) {
+      console.error('Export everything failed:', error);
+      setCloudActionError(error?.message ?? String(error));
+      setCloudActionStatus('error');
+    }
+  }
+
   async function restoreCloudDataToLocal() {
     if (!canEdit) {
       setCloudActionStatus('unauthorized');
@@ -2845,6 +2894,17 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
             >
               Recover latest local backup
             </button>
+            {FEATURE_FLAGS.exportEverything ? (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={exportEverythingAsJson}
+                disabled={cloudActionStatus === 'exporting' || cloudActionStatus === 'migrating' || cloudActionStatus === 'restoring'}
+                title="Download a full JSON snapshot of blueprint, runbook, users, templates and local versions. Use as a safety backup before any large change."
+              >
+                {cloudActionStatus === 'exporting' ? 'Exporting…' : 'Export everything (JSON)'}
+              </button>
+            ) : null}
             <span className="pill cloud-user-pill">
               {cloudStore.enabled ? `Cloud user: ${cloudStore.userKey}` : 'Firebase not configured'}
             </span>
@@ -2861,6 +2921,8 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                     'no-backup': 'No local backup found',
                     migrating: 'Uploading…',
                     restoring: 'Downloading…',
+                    exporting: 'Preparing backup…',
+                    exported: 'Backup downloaded',
                   }[cloudActionStatus]
                 }
               </span>
