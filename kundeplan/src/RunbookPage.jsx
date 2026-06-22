@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import { getPartsMap, getResolvedPart } from './graph.js';
 import { createRunbookStore } from './firebaseStore.js';
+import { FEATURE_FLAGS } from './featureFlags.js';
 
 const RUNBOOK_CONFIG_KEY = 'kundeplan-runbook-config-v1';
 
@@ -144,6 +145,7 @@ export function RunbookPage({ parts, canEdit = false }) {
   const [filterOwner, setFilterOwner] = useState('all');
   const [filterAssignee, setFilterAssignee] = useState('all');
   const [filterResidence, setFilterResidence] = useState('all');
+  const [searchText, setSearchText] = useState('');
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [editingNotesId, setEditingNotesId] = useState(null);
   const [cloudStatus, setCloudStatus] = useState('idle'); // idle | syncing | synced | offline | error
@@ -267,6 +269,7 @@ export function RunbookPage({ parts, canEdit = false }) {
   }, [config]);
 
   const filteredSteps = useMemo(() => {
+    const search = FEATURE_FLAGS.searchAndFilter ? searchText.trim().toLowerCase() : '';
     return orderedSteps.filter((part) => {
       const resolved = getResolvedPart(part.id, parts) ?? part;
       const stepConfig = config[part.id] ?? {};
@@ -282,9 +285,28 @@ export function RunbookPage({ parts, canEdit = false }) {
         const residence = resolved.residesIn || part.residesIn || '';
         if (residence !== filterResidence) return false;
       }
+      if (search) {
+        const haystack = [
+          part.name,
+          resolved.name,
+          part.owner,
+          resolved.owner,
+          part.residesIn,
+          resolved.residesIn,
+          part.notes,
+          resolved.notes,
+          stepConfig.assignee,
+          stepConfig.notes,
+          stepConfig.dueDate,
+        ];
+        const match = haystack.some(
+          (value) => typeof value === 'string' && value.toLowerCase().includes(search),
+        );
+        if (!match) return false;
+      }
       return true;
     });
-  }, [orderedSteps, config, filterStatus, filterOwner, filterAssignee, filterResidence, parts]);
+  }, [orderedSteps, config, filterStatus, filterOwner, filterAssignee, filterResidence, searchText, parts]);
 
   const progress = useMemo(() => {
     if (orderedSteps.length === 0) return { done: 0, inProgress: 0, total: 0, overdue: 0 };
@@ -566,6 +588,31 @@ export function RunbookPage({ parts, canEdit = false }) {
       {/* Filters + controls */}
       <div className="runbook-controls">
         <div className="runbook-filters">
+          {FEATURE_FLAGS.searchAndFilter ? (
+            <label className="runbook-search-label">
+              Search
+              <div className="runbook-search-input-wrap">
+                <input
+                  type="search"
+                  className="runbook-search-input"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  placeholder="Name, owner, assignee, notes…"
+                  aria-label="Search runbook steps"
+                />
+                {searchText ? (
+                  <button
+                    type="button"
+                    className="runbook-search-clear"
+                    onClick={() => setSearchText('')}
+                    aria-label="Clear search"
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
+            </label>
+          ) : null}
           <label>
             Status
             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>

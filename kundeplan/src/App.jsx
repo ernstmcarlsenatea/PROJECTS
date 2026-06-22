@@ -459,6 +459,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   const [structureSummary, setStructureSummary] = useState(null);
   const [openHandleMenuId, setOpenHandleMenuId] = useState(null);
   const [openEditMenuId, setOpenEditMenuId] = useState(null);
+  const [catalogSearch, setCatalogSearch] = useState('');
 
   useEffect(() => {
     if (!showUserGuide) {
@@ -785,6 +786,44 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     });
     return [...groups.entries()].sort((left, right) => left[0].localeCompare(right[0]));
   }, [state.parts]);
+
+  // Phase 2: catalog text search. Matches part name, owner, residence,
+  // presented-in, notes, source name and dependency names.
+  const trimmedCatalogSearch = catalogSearch.trim().toLowerCase();
+  const filteredGroupedParts = useMemo(() => {
+    if (!FEATURE_FLAGS.searchAndFilter || !trimmedCatalogSearch) {
+      return groupedParts;
+    }
+    const matches = (part) => {
+      const resolved = getResolvedPart(part.id, state.parts) ?? part;
+      const haystackParts = [
+        part.name,
+        resolved.name,
+        part.owner,
+        resolved.owner,
+        part.residesIn,
+        resolved.residesIn,
+        part.presentedIn,
+        resolved.presentedIn,
+        part.notes,
+        resolved.notes,
+        part.sourceId ? partsMap.get(part.sourceId)?.name : '',
+        ...(part.dependencies ?? []).map((id) => partsMap.get(id)?.name ?? ''),
+      ];
+      return haystackParts.some(
+        (value) => typeof value === 'string' && value.toLowerCase().includes(trimmedCatalogSearch),
+      );
+    };
+    return groupedParts
+      .map(([residence, parts]) => [residence, parts.filter(matches)])
+      .filter(([, parts]) => parts.length > 0);
+  }, [groupedParts, trimmedCatalogSearch, state.parts, partsMap]);
+
+  const totalCatalogParts = state.parts.length;
+  const visibleCatalogParts = useMemo(
+    () => filteredGroupedParts.reduce((acc, [, parts]) => acc + parts.length, 0),
+    [filteredGroupedParts],
+  );
 
   const selectedId = draft?.id ?? state.selectedId;
   const addableDependencies = useMemo(() => {
@@ -2579,6 +2618,31 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               <p className="panel-note">This table gives the exact owner, presentation point, and dependency footprint for each part.</p>
             </div>
             <div className="panel-tools panel-tools-compact catalog-header-actions">
+              {FEATURE_FLAGS.searchAndFilter ? (
+                <label className="catalog-search-label">
+                  Search
+                  <div className="catalog-search-input-wrap">
+                    <input
+                      type="search"
+                      className="catalog-search-input"
+                      value={catalogSearch}
+                      onChange={(event) => setCatalogSearch(event.target.value)}
+                      placeholder="Name, owner, residence, notes…"
+                      aria-label="Search the catalog"
+                    />
+                    {catalogSearch ? (
+                      <button
+                        type="button"
+                        className="catalog-search-clear"
+                        onClick={() => setCatalogSearch('')}
+                        aria-label="Clear search"
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
+                </label>
+              ) : null}
               <label>
                 Export quality
                 <select value={exportQuality} onChange={(event) => setExportQuality(event.target.value)}>
@@ -2592,8 +2656,17 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
               </div>
             </div>
           </div>
+          {FEATURE_FLAGS.searchAndFilter && trimmedCatalogSearch ? (
+            <p className="catalog-search-status">
+              Showing <strong>{visibleCatalogParts}</strong> of <strong>{totalCatalogParts}</strong> parts matching
+              {' '}&ldquo;{catalogSearch.trim()}&rdquo;.
+            </p>
+          ) : null}
           <div className="catalog" ref={catalogRef}>
-            {groupedParts.map(([residence, parts]) => (
+            {filteredGroupedParts.length === 0 ? (
+              <p className="catalog-empty">No parts match your search.</p>
+            ) : null}
+            {filteredGroupedParts.map(([residence, parts]) => (
               <section className="catalog-group" key={residence}>
                 <h3>{residence}</h3>
                 <div className="catalog-list">
@@ -3397,6 +3470,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   one step, ordered by a topological sort that respects both source links and
                   dependencies (a part's prerequisites are always listed before it).
                 </p>
+                <h4>Search &amp; filters</h4>
+                <ul>
+                  <li><strong>Search</strong> — free-text box matching the part name, owner, residence, assignee, due date, or any note.</li>
+                  <li><strong>Status</strong> / <strong>Owner</strong> / <strong>Assignee</strong> / <strong>Residence</strong> dropdowns narrow the list further.</li>
+                  <li>The pill above the list shows how many of the total steps are currently visible.</li>
+                </ul>
                 <h4>Per-step fields (editable by admins and editors)</h4>
                 <ul>
                   <li><strong>Status</strong> — Not started · In progress · Done · Skipped. Status changes feed the statistics panel and progress badges.</li>
@@ -3457,10 +3536,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 <h3>9. Catalog (parts grouped by residence)</h3>
                 <p>
                   A compact, scannable list of every part, grouped by where it resides. Click any
-                  entry to load it in the Inspector. The catalog header uses a golden-ratio split
-                  and has its own <strong>Export quality</strong> selector plus dedicated
-                  <strong>Export PNG</strong> / <strong>Export PDF</strong> buttons that capture
-                  only the catalog view (independent from the Blueprint map exports).
+                  entry to load it in the Inspector. A <strong>Search</strong> box in the catalog
+                  header filters by part name, owner, residence, presentation point, notes, source
+                  name, or dependency names &mdash; matching groups stay visible, empty ones are
+                  hidden. The catalog also has its own <strong>Export quality</strong> selector plus
+                  dedicated <strong>Export PNG</strong> / <strong>Export PDF</strong> buttons that
+                  capture only the catalog view (independent from the Blueprint map exports).
                 </p>
               </section>
 
