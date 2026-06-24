@@ -2545,7 +2545,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         </button>
         <div>
           <p className="eyebrow">ATEA AS customer plan atlas</p>
-          <h1>Customer plan - source and relations</h1>
+          <h1>Customer Planning Toolkit</h1>
           <p className="hero-copy">
             Track every part, the owner, where it lives, where it is presented, and how it depends on the rest.
             One source of truth keeps updates propagating cleanly across the map.
