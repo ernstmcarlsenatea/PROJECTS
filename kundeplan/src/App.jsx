@@ -3,7 +3,7 @@ import { toCanvas as htmlToCanvas } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { STORAGE_KEY, VERSIONS_KEY, VERSION_COUNT_KEY, createEmptyDraft, createId, demoParts } from './data.js';
 import { ANCHOR_SIDES, buildStructuredEdgePath, canUseAsSource, getAnchorPoint, getEdgeGeometry, getGraphLayout, getPartsMap, getResolvedPart, getSourceChainNames, getSuggestedAnchorSides } from './graph.js';
-import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, createAuditStore, createPlansStore, createVersionsStore, AUDIT_EVENT_TYPES, DEFAULT_PLAN_ID, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+import { createCloudStore, createAdminStore, createUserStore, createRunbookStore, createTemplateStore, createAuditStore, createPlansStore, createVersionsStore, createUserAutoStore, getUserAutoDocId, AUDIT_EVENT_TYPES, DEFAULT_PLAN_ID, computeIsAdmin, getUserRole, isSuperAdmin, ROLES, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
 import { FEATURE_FLAGS, SCHEMA_VERSION } from './featureFlags.js';
 
 // Phase 1: lazy-load secondary pages so they don't bloat the initial bundle.
@@ -543,6 +543,30 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     };
   }, [versionsStore, activePlanId]);
 
+  // Phase 8 — auto-register sign-ins. Stub upsert runs once per session when
+  // we know the caller's email; admins subscribe to the whole collection so
+  // unregistered sign-ins surface as auto-viewer rows in the Users panel.
+  const userAutoStore = useMemo(() => createUserAutoStore(), []);
+  const [autoUsers, setAutoUsers] = useState([]);
+  useEffect(() => {
+    if (!FEATURE_FLAGS.autoUserRegistry || !userAutoStore.enabled) return;
+    if (!callerEmail) return;
+    userAutoStore.recordSignIn({
+      email: callerEmail,
+      displayName: activeAccount?.name ?? '',
+    });
+  }, [userAutoStore, callerEmail, activeAccount?.name]);
+  useEffect(() => {
+    if (!FEATURE_FLAGS.autoUserRegistry || !userAutoStore.enabled) return undefined;
+    const unsubscribe = userAutoStore.subscribeAll(
+      (next) => setAutoUsers(next),
+      (error) => console.warn('User auto subscription failed:', error),
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [userAutoStore]);
+
   // List of all plans visible in the selector, including the implicit default.
   const visiblePlans = useMemo(() => {
     const base = [{ id: DEFAULT_PLAN_ID, name: 'Default plan', description: '', createdAt: null, createdBy: '' }];
@@ -556,17 +580,42 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
 
   // Effective users: prefer the new user registry; fall back to legacy admin
   // list so existing installations keep working before a save happens.
+  // Phase 8 also merges auto-registered sign-ins (kundeplanUserAuto) in as
+  // viewer rows so admins can see everyone who has signed in. Auto rows are
+  // tagged with autoRegistered: true; the save handlers below treat them as
+  // adds rather than updates and clean up the stub after a successful save.
   const effectiveUsers = useMemo(() => {
-    if (users.length > 0) return users;
-    if (adminEmails.length === 0) return [];
-    return adminEmails.map((email) => ({
-      email,
-      role: 'admin',
-      displayName: '',
-      addedAt: null,
-      addedBy: '',
-    }));
-  }, [users, adminEmails]);
+    const base = users.length > 0
+      ? users
+      : adminEmails.map((email) => ({
+          email,
+          role: 'admin',
+          displayName: '',
+          addedAt: null,
+          addedBy: '',
+        }));
+    if (!FEATURE_FLAGS.autoUserRegistry || autoUsers.length === 0) return base;
+    const registeredEmails = new Set(base.map((u) => u.email));
+    const extras = autoUsers
+      .filter((a) => a.email && a.email !== SUPER_ADMIN_EMAIL && !registeredEmails.has(a.email))
+      .map((a) => ({
+        email: a.email,
+        role: 'viewer',
+        displayName: a.displayName ?? '',
+        addedAt: a.firstSeenAt ? a.firstSeenAt.toISOString?.() ?? null : null,
+        addedBy: 'auto-signin',
+        autoRegistered: true,
+      }));
+    return [...base, ...extras];
+  }, [users, adminEmails, autoUsers]);
+
+  // Curated users only (no auto-registered stubs). Save handlers operate on
+  // this list so admin actions never accidentally persist every auto row to
+  // the curated registry — only the targeted email gets promoted.
+  const curatedUsers = useMemo(
+    () => effectiveUsers.filter((u) => !u.autoRegistered),
+    [effectiveUsers],
+  );
 
   const callerRole = getUserRole(callerEmail, effectiveUsers);
   const isSuper = isSuperAdmin(callerEmail);
@@ -2219,7 +2268,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setAdminError(null);
     try {
       const nextUsers = [
-        ...effectiveUsers.filter((u) => u.email !== email),
+        ...curatedUsers.filter((u) => u.email !== email),
         {
           email,
           role: userDraft.role || 'viewer',
@@ -2229,6 +2278,9 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         },
       ];
       await userStore.saveUsers(nextUsers);
+      if (FEATURE_FLAGS.autoUserRegistry && userAutoStore.enabled) {
+        await userAutoStore.deleteAuto(getUserAutoDocId(email));
+      }
       recordAudit(
         AUDIT_EVENT_TYPES.USER_ADD,
         `Added user ${email} as ${userDraft.role || 'viewer'}`,
@@ -2259,18 +2311,30 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setAdminError(null);
     try {
       const previous = effectiveUsers.find((u) => u.email === editingUserEmail) ?? null;
-      const nextUsers = effectiveUsers.map((u) =>
-        u.email === editingUserEmail
-          ? {
-              ...u,
-              role: editingUserDraft.role || u.role,
-              displayName: (editingUserDraft.displayName || '').trim(),
-            }
-          : u,
-      );
-      await userStore.saveUsers(nextUsers);
-      const newRole = editingUserDraft.role || previous?.role || '';
+      const wasAuto = previous?.autoRegistered === true;
+      const newRole = editingUserDraft.role || previous?.role || 'viewer';
       const newName = (editingUserDraft.displayName || '').trim();
+      const alreadyCurated = curatedUsers.some((u) => u.email === editingUserEmail);
+      const nextUsers = alreadyCurated
+        ? curatedUsers.map((u) =>
+            u.email === editingUserEmail
+              ? { ...u, role: newRole, displayName: newName }
+              : u,
+          )
+        : [
+            ...curatedUsers,
+            {
+              email: editingUserEmail,
+              role: newRole,
+              displayName: newName,
+              addedAt: new Date().toISOString(),
+              addedBy: callerEmail ?? 'unknown',
+            },
+          ];
+      await userStore.saveUsers(nextUsers);
+      if (wasAuto && FEATURE_FLAGS.autoUserRegistry && userAutoStore.enabled) {
+        await userAutoStore.deleteAuto(getUserAutoDocId(editingUserEmail));
+      }
       const roleChanged = previous && previous.role !== newRole;
       const nameChanged = previous && (previous.displayName || '') !== newName;
       const changes = [];
@@ -2302,8 +2366,24 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
     setAdminError(null);
     try {
       const previous = effectiveUsers.find((u) => u.email === email) ?? null;
-      const nextUsers = effectiveUsers.map((u) => (u.email === email ? { ...u, role } : u));
+      const wasAuto = previous?.autoRegistered === true;
+      const alreadyCurated = curatedUsers.some((u) => u.email === email);
+      const nextUsers = alreadyCurated
+        ? curatedUsers.map((u) => (u.email === email ? { ...u, role } : u))
+        : [
+            ...curatedUsers,
+            {
+              email,
+              role,
+              displayName: previous?.displayName ?? '',
+              addedAt: new Date().toISOString(),
+              addedBy: callerEmail ?? 'unknown',
+            },
+          ];
       await userStore.saveUsers(nextUsers);
+      if (wasAuto && FEATURE_FLAGS.autoUserRegistry && userAutoStore.enabled) {
+        await userAutoStore.deleteAuto(getUserAutoDocId(email));
+      }
       if (previous && previous.role !== role) {
         recordAudit(
           AUDIT_EVENT_TYPES.USER_ROLE,
@@ -2325,13 +2405,23 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
       window.alert('Cannot remove the super-admin.');
       return;
     }
-    if (!window.confirm(`Remove user ${email} from the registry?`)) return;
+    const target = effectiveUsers.find((u) => u.email === email) ?? null;
+    const wasAutoOnly = target?.autoRegistered === true;
+    const confirmMessage = wasAutoOnly
+      ? `Remove auto-registered sign-in for ${email}? They will reappear here next time they sign in.`
+      : `Remove user ${email} from the registry?`;
+    if (!window.confirm(confirmMessage)) return;
     setAdminBusy(true);
     setAdminError(null);
     try {
-      const removed = effectiveUsers.find((u) => u.email === email) ?? null;
-      const nextUsers = effectiveUsers.filter((u) => u.email !== email);
-      await userStore.saveUsers(nextUsers);
+      const removed = target;
+      if (!wasAutoOnly) {
+        const nextUsers = curatedUsers.filter((u) => u.email !== email);
+        await userStore.saveUsers(nextUsers);
+      }
+      if (FEATURE_FLAGS.autoUserRegistry && userAutoStore.enabled) {
+        await userAutoStore.deleteAuto(getUserAutoDocId(email));
+      }
       recordAudit(
         AUDIT_EVENT_TYPES.USER_REMOVE,
         `Removed user ${email}${removed?.role ? ` (was ${removed.role})` : ''}`,
@@ -3733,10 +3823,13 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                 usersForDisplay.map((user) => {
                   const isEditing = editingUserEmail === user.email;
                   return (
-                    <tr key={user.email} className={`role-row-${user.role} ${user.isSuper ? 'is-super' : ''}`}>
+                    <tr key={user.email} className={`role-row-${user.role} ${user.isSuper ? 'is-super' : ''} ${user.autoRegistered ? 'is-auto' : ''}`}>
                       <td className="user-email">
                         {user.email}
                         {user.isSuper ? <span className="pill cloud-user-pill">Super</span> : null}
+                        {user.autoRegistered ? (
+                          <span className="pill user-auto-pill" title="Auto-registered on first sign-in. Edit or change role to promote into the curated registry.">Auto</span>
+                        ) : null}
                       </td>
                       <td>
                         {isEditing ? (
@@ -4397,6 +4490,17 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                   changes automatically updates the legacy admin/editor email lists used by the
                   Firestore security rules, so permissions take effect immediately.
                 </p>
+                <h4>Auto-registered sign-ins</h4>
+                <p>
+                  When auto-registration is enabled, every signed-in user automatically appears in
+                  the list with the <strong>viewer</strong> role and a small <span className="pill user-auto-pill">Auto</span> badge — so admins can see
+                  exactly who has accessed the app without having to add anyone manually first.
+                </p>
+                <ul>
+                  <li><strong>Promote</strong> — click <em>Edit</em> or change the role inline. The user is then written into the curated registry (the Auto badge disappears) and you can give them editor or admin rights.</li>
+                  <li><strong>Hide</strong> — click <em>Delete</em>. The auto stub is removed but the user can sign in again, which simply recreates the stub. Treat this as “clear from the list”, not as “kick them out”.</li>
+                  <li><strong>Block</strong> — to actually prevent access, disable the account in Firebase Authentication. The Users panel here only governs role within the app, not whether sign-in is allowed.</li>
+                </ul>
               </section>
 
               <section id="guide-activity">

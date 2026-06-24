@@ -198,6 +198,30 @@ service cloud.firestore {
       allow delete: if isAdminUser();
     }
 
+    // Phase 8 — self-written sign-in stub. Every trusted user owns the doc
+    // at /kundeplanUserAuto/{emailKey} for their own email. CREATE and
+    // UPDATE require the email field to match the caller; immutable fields
+    // (email, schemaVersion, firstSeenAt) are pinned on update. Admins may
+    // DELETE (so they can clean up stubs once a user is in the curated
+    // registry). All trusted users may READ so the Users panel can surface
+    // unregistered sign-ins to admins.
+    match /kundeplanUserAuto/{signupId} {
+      allow read: if isTrustedUser();
+
+      allow create: if isTrustedUser()
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.email == callerEmail()
+        && request.resource.data.displayName is string;
+
+      allow update: if isTrustedUser()
+        && resource.data.email == callerEmail()
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.schemaVersion == resource.data.schemaVersion
+        && request.resource.data.firstSeenAt == resource.data.firstSeenAt;
+
+      allow delete: if isAdminUser();
+    }
+
     // Default deny everything else.
     match /{document=**} {
       allow read, write: if false;

@@ -38,6 +38,12 @@ export const FEATURE_FLAGS = Object.freeze({
   // blueprint and runbook for everyone. Disable to fall back to local-only
   // versions; previously written cloud versions remain readable in Firestore.
   cloudVersions: true,
+  // Phase 8 — auto-register new sign-ins. On every sign-in the app writes a
+  // self-owned stub doc to kundeplanUserAuto/{emailKey}. The Users panel
+  // merges those stubs in as viewer rows so admins can see who has signed
+  // up without having to add them manually first. Editing the row promotes
+  // it into the curated kundeplanUsers/list and clears the stub.
+  autoUserRegistry: true,
 });
 
 export function isFeatureEnabled(name) {

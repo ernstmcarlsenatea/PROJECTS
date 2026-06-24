@@ -1147,3 +1147,126 @@ export function createVersionsStore() {
     },
   };
 }
+
+const USER_AUTO_COLLECTION = 'kundeplanUserAuto';
+const USER_AUTO_SCHEMA_VERSION = 1;
+
+export function getUserAutoDocId(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return '';
+  // Firestore allows '.' in doc ids but we replace it to avoid surprises.
+  return normalized.replace(/[^a-z0-9_-]/g, '_').slice(0, 200);
+}
+
+function readUserAutoDoc(d) {
+  const data = d.data() ?? {};
+  return {
+    id: d.id,
+    email: typeof data.email === 'string' ? data.email : '',
+    displayName: typeof data.displayName === 'string' ? data.displayName : '',
+    firstSeenAt: data.firstSeenAt?.toDate ? data.firstSeenAt.toDate() : null,
+    lastSeenAt: data.lastSeenAt?.toDate ? data.lastSeenAt.toDate() : null,
+  };
+}
+
+// Phase 8 — self-written sign-in stub. Every time a trusted user signs in
+// the app calls recordSignIn(), which upserts a small doc under their email
+// key. The Users panel reads the whole collection and surfaces any stub
+// whose email is not in the curated kundeplanUsers/list as an auto-viewer
+// row, so admins can see (and promote) anyone who has accessed the app.
+export function createUserAutoStore() {
+  const db = getDb();
+
+  if (!db) {
+    return {
+      enabled: false,
+      async recordSignIn() { return null; },
+      async deleteAuto() { return null; },
+      subscribeAll() { return () => {}; },
+    };
+  }
+
+  const autoCol = collection(db, USER_AUTO_COLLECTION);
+  let cloudAvailable = true;
+
+  return {
+    enabled: true,
+    schemaVersion: USER_AUTO_SCHEMA_VERSION,
+
+    // Idempotent. Creates the stub on first sign-in, updates lastSeenAt on
+    // subsequent sign-ins. Silent on failure so a permission glitch never
+    // blocks the actual sign-in flow.
+    async recordSignIn({ email, displayName }) {
+      if (!cloudAvailable) return null;
+      const normalized = normalizeEmail(email);
+      if (!normalized) return null;
+      const docId = getUserAutoDocId(normalized);
+      const ref = doc(db, USER_AUTO_COLLECTION, docId);
+      try {
+        const existing = await getDoc(ref);
+        if (existing.exists()) {
+          await setDoc(
+            ref,
+            { lastSeenAt: serverTimestamp() },
+            { merge: true },
+          );
+        } else {
+          await setDoc(ref, {
+            schemaVersion: USER_AUTO_SCHEMA_VERSION,
+            email: normalized,
+            displayName: typeof displayName === 'string' ? displayName.slice(0, 200) : '',
+            firstSeenAt: serverTimestamp(),
+            lastSeenAt: serverTimestamp(),
+          });
+        }
+        return docId;
+      } catch (err) {
+        if (isMissingDefaultDatabaseError(err)) {
+          cloudAvailable = false;
+          return null;
+        }
+        console.warn('recordSignIn failed:', err);
+        return null;
+      }
+    },
+
+    async deleteAuto(docId) {
+      if (!cloudAvailable || !docId) return null;
+      try {
+        await deleteDoc(doc(db, USER_AUTO_COLLECTION, docId));
+        return docId;
+      } catch (err) {
+        console.warn('deleteAuto failed:', err);
+        return null;
+      }
+    },
+
+    subscribeAll(onChange, onError) {
+      if (!cloudAvailable) {
+        onChange?.([]);
+        return () => {};
+      }
+      return onSnapshot(
+        autoCol,
+        (snap) => {
+          const items = [];
+          snap.forEach((d) => items.push(readUserAutoDoc(d)));
+          items.sort((a, b) => {
+            const ta = a.firstSeenAt?.getTime?.() ?? 0;
+            const tb = b.firstSeenAt?.getTime?.() ?? 0;
+            return tb - ta;
+          });
+          onChange?.(items);
+        },
+        (error) => {
+          if (isMissingDefaultDatabaseError(error)) {
+            cloudAvailable = false;
+            return;
+          }
+          if (typeof onError === 'function') onError(error);
+          else console.warn('User auto subscription failed:', error);
+        },
+      );
+    },
+  };
+}
