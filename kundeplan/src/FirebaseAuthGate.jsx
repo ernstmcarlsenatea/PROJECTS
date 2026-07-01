@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   getAuth,
@@ -60,6 +60,10 @@ export function FirebaseAuthGate({ children }) {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
+  // Guard so the auth-state listener does not race handleSubmit and sign the
+  // brand-new user out before we can write the auto-registry stub and send
+  // the verification email. handleSubmit toggles this while it is active.
+  const submitInFlightRef = useRef(false);
   const allowedDomain = getAllowedDomain();
 
   useEffect(() => {
@@ -68,6 +72,14 @@ export function FirebaseAuthGate({ children }) {
         firebaseSignOut(auth).catch(() => {});
         setUser(null);
         setError(`Only ${allowedDomain ? `@${allowedDomain}` : 'allowed'} accounts can sign in.`);
+        setReady(true);
+        return;
+      }
+      if (submitInFlightRef.current) {
+        // handleSubmit is driving the flow (create or sign-in) and will
+        // decide whether to keep the session or sign the user out. Just
+        // mirror the current user and let handleSubmit finish.
+        setUser(nextUser);
         setReady(true);
         return;
       }
@@ -127,6 +139,7 @@ export function FirebaseAuthGate({ children }) {
     }
 
     setStatus('working');
+    submitInFlightRef.current = true;
     try {
       if (mode === 'create') {
         const cred = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
@@ -172,6 +185,7 @@ export function FirebaseAuthGate({ children }) {
       console.error('Auth failed:', err);
       setError(describeFirebaseError(err));
     } finally {
+      submitInFlightRef.current = false;
       setStatus('idle');
     }
   }
