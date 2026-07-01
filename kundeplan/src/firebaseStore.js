@@ -1164,6 +1164,7 @@ function readUserAutoDoc(d) {
     id: d.id,
     email: typeof data.email === 'string' ? data.email : '',
     displayName: typeof data.displayName === 'string' ? data.displayName : '',
+    emailVerified: typeof data.emailVerified === 'boolean' ? data.emailVerified : null,
     firstSeenAt: data.firstSeenAt?.toDate ? data.firstSeenAt.toDate() : null,
     lastSeenAt: data.lastSeenAt?.toDate ? data.lastSeenAt.toDate() : null,
   };
@@ -1180,6 +1181,7 @@ export function createUserAutoStore() {
   if (!db) {
     return {
       enabled: false,
+      async registerNewAccount() { return null; },
       async recordSignIn() { return null; },
       async deleteAuto() { return null; },
       subscribeAll() { return () => {}; },
@@ -1193,10 +1195,44 @@ export function createUserAutoStore() {
     enabled: true,
     schemaVersion: USER_AUTO_SCHEMA_VERSION,
 
+    // One-shot stub write called from the account-creation flow. The caller
+    // is signed in but not yet email-verified, so we intentionally avoid a
+    // prior getDoc (which requires isTrustedUser) and do a single
+    // setDoc-with-merge that pins the immutable fields. Silent on failure.
+    async registerNewAccount({ email, displayName, emailVerified }) {
+      if (!cloudAvailable) return null;
+      const normalized = normalizeEmail(email);
+      if (!normalized) return null;
+      const docId = getUserAutoDocId(normalized);
+      const ref = doc(db, USER_AUTO_COLLECTION, docId);
+      try {
+        await setDoc(
+          ref,
+          {
+            schemaVersion: USER_AUTO_SCHEMA_VERSION,
+            email: normalized,
+            displayName: typeof displayName === 'string' ? displayName.slice(0, 200) : '',
+            emailVerified: emailVerified === true,
+            firstSeenAt: serverTimestamp(),
+            lastSeenAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+        return docId;
+      } catch (err) {
+        if (isMissingDefaultDatabaseError(err)) {
+          cloudAvailable = false;
+          return null;
+        }
+        console.warn('registerNewAccount failed:', err);
+        return null;
+      }
+    },
+
     // Idempotent. Creates the stub on first sign-in, updates lastSeenAt on
     // subsequent sign-ins. Silent on failure so a permission glitch never
     // blocks the actual sign-in flow.
-    async recordSignIn({ email, displayName }) {
+    async recordSignIn({ email, displayName, emailVerified }) {
       if (!cloudAvailable) return null;
       const normalized = normalizeEmail(email);
       if (!normalized) return null;
@@ -1207,7 +1243,10 @@ export function createUserAutoStore() {
         if (existing.exists()) {
           await setDoc(
             ref,
-            { lastSeenAt: serverTimestamp() },
+            {
+              lastSeenAt: serverTimestamp(),
+              ...(typeof emailVerified === 'boolean' ? { emailVerified } : {}),
+            },
             { merge: true },
           );
         } else {
@@ -1215,6 +1254,7 @@ export function createUserAutoStore() {
             schemaVersion: USER_AUTO_SCHEMA_VERSION,
             email: normalized,
             displayName: typeof displayName === 'string' ? displayName.slice(0, 200) : '',
+            emailVerified: emailVerified === true,
             firstSeenAt: serverTimestamp(),
             lastSeenAt: serverTimestamp(),
           });

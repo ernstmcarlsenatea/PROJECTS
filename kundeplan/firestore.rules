@@ -40,6 +40,18 @@ service cloud.firestore {
         );
     }
 
+    // Signed-in but not yet email-verified. Only used to let a brand-new
+    // account write its own kundeplanUserAuto stub during the account
+    // creation flow so admins can see the pending sign-up.
+    function isSignedInAllowedDomain() {
+      return request.auth != null
+        && callerEmail() != ''
+        && (
+          callerEmail() == superAdminEmail()
+          || emailDomain(callerEmail()) == allowedEmailDomain()
+        );
+    }
+
     function adminsDoc() {
       return get(/databases/$(database)/documents/kundeplanAdmins/list);
     }
@@ -198,22 +210,24 @@ service cloud.firestore {
       allow delete: if isAdminUser();
     }
 
-    // Phase 8 — self-written sign-in stub. Every trusted user owns the doc
-    // at /kundeplanUserAuto/{emailKey} for their own email. CREATE and
-    // UPDATE require the email field to match the caller; immutable fields
-    // (email, schemaVersion, firstSeenAt) are pinned on update. Admins may
-    // DELETE (so they can clean up stubs once a user is in the curated
-    // registry). All trusted users may READ so the Users panel can surface
-    // unregistered sign-ins to admins.
+    // Phase 8 — self-written sign-in stub. Every signed-in user owns the
+    // doc at /kundeplanUserAuto/{emailKey} for their own email. CREATE is
+    // allowed for any signed-in account on the allowed domain (even before
+    // email verification) so brand-new accounts show up in the admin's
+    // Users panel immediately. UPDATE requires the caller to be trusted
+    // (verified) and pins immutable fields. Admins may DELETE (so they can
+    // clean up stubs once a user is in the curated registry). All trusted
+    // users may READ so the Users panel can surface unregistered sign-ins
+    // to admins.
     match /kundeplanUserAuto/{signupId} {
       allow read: if isTrustedUser();
 
-      allow create: if isTrustedUser()
+      allow create: if isSignedInAllowedDomain()
         && request.resource.data.schemaVersion == 1
         && request.resource.data.email == callerEmail()
         && request.resource.data.displayName is string;
 
-      allow update: if isTrustedUser()
+      allow update: if isSignedInAllowedDomain()
         && resource.data.email == callerEmail()
         && request.resource.data.email == resource.data.email
         && request.resource.data.schemaVersion == resource.data.schemaVersion

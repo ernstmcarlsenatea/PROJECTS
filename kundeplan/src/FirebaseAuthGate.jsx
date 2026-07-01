@@ -8,7 +8,8 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
-import { firebaseApp, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+import { createUserAutoStore, firebaseApp, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+import { FEATURE_FLAGS } from './featureFlags.js';
 
 function isSuperAdminEmail(email) {
   return typeof email === 'string' && email.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
@@ -50,6 +51,7 @@ function describeFirebaseError(err) {
 
 export function FirebaseAuthGate({ children }) {
   const auth = useMemo(() => getAuth(firebaseApp), []);
+  const userAutoStore = useMemo(() => createUserAutoStore(), []);
   const [user, setUser] = useState(() => auth.currentUser);
   const [ready, setReady] = useState(false);
   const [mode, setMode] = useState('sign-in');
@@ -128,6 +130,16 @@ export function FirebaseAuthGate({ children }) {
     try {
       if (mode === 'create') {
         const cred = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+        // Register the account in kundeplanUserAuto immediately so it shows
+        // up in the admin Users panel even though the user has not yet
+        // verified their email (and therefore cannot sign in yet).
+        if (FEATURE_FLAGS.autoUserRegistry && userAutoStore.enabled) {
+          await userAutoStore.registerNewAccount({
+            email: cred.user.email ?? trimmedEmail,
+            displayName: cred.user.displayName ?? '',
+            emailVerified: cred.user.emailVerified === true,
+          });
+        }
         try {
           await sendEmailVerification(cred.user);
         } catch (verifyErr) {

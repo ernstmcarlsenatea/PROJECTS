@@ -573,6 +573,21 @@ body::after {
   cursor: help;
 }
 
+.user-pending-pill {
+  white-space: nowrap;
+  margin-left: 0.4rem;
+  background: #fdecec;
+  color: #8a1f1f;
+  border: 2px solid #d95a5a;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  cursor: help;
+}
+
 tr.is-auto td {
   background: rgba(255, 196, 100, 0.07);
 }

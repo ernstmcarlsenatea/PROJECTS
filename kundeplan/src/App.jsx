@@ -551,9 +551,12 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
   useEffect(() => {
     if (!FEATURE_FLAGS.autoUserRegistry || !userAutoStore.enabled) return;
     if (!callerEmail) return;
+    // App.jsx renders only after FirebaseAuthGate lets the user through, so
+    // any non-super-admin here has already verified their email.
     userAutoStore.recordSignIn({
       email: callerEmail,
       displayName: activeAccount?.name ?? '',
+      emailVerified: true,
     });
   }, [userAutoStore, callerEmail, activeAccount?.name]);
   useEffect(() => {
@@ -605,6 +608,7 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
         addedAt: a.firstSeenAt ? a.firstSeenAt.toISOString?.() ?? null : null,
         addedBy: 'auto-signin',
         autoRegistered: true,
+        emailVerified: a.emailVerified,
       }));
     return [...base, ...extras];
   }, [users, adminEmails, autoUsers]);
@@ -3829,6 +3833,9 @@ function App({ auth = { enabled: false, activeAccount: null, signOut: null, publ
                         {user.isSuper ? <span className="pill cloud-user-pill">Super</span> : null}
                         {user.autoRegistered ? (
                           <span className="pill user-auto-pill" title="Auto-registered on first sign-in. Edit or change role to promote into the curated registry.">Auto</span>
+                        ) : null}
+                        {user.autoRegistered && user.emailVerified === false ? (
+                          <span className="pill user-pending-pill" title="Account created but the user has not clicked their email verification link yet.">Pending verification</span>
                         ) : null}
                       </td>
                       <td>
