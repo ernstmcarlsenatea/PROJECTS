@@ -3,11 +3,16 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
+  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
-import { firebaseApp } from './firebaseStore.js';
+import { firebaseApp, SUPER_ADMIN_EMAIL } from './firebaseStore.js';
+
+function isSuperAdminEmail(email) {
+  return typeof email === 'string' && email.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+}
 
 function getAllowedDomain() {
   const raw = (import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? '').trim().toLowerCase();
@@ -56,13 +61,24 @@ export function FirebaseAuthGate({ children }) {
   const allowedDomain = getAllowedDomain();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
       if (nextUser && !isEmailAllowed(nextUser.email)) {
         firebaseSignOut(auth).catch(() => {});
         setUser(null);
         setError(`Only ${allowedDomain ? `@${allowedDomain}` : 'allowed'} accounts can sign in.`);
         setReady(true);
         return;
+      }
+      if (nextUser && !isSuperAdminEmail(nextUser.email) && !nextUser.emailVerified) {
+        // Refresh in case the user just clicked the verification link in another tab.
+        try { await nextUser.reload(); } catch { /* ignore */ }
+        if (!nextUser.emailVerified) {
+          firebaseSignOut(auth).catch(() => {});
+          setUser(null);
+          setError('Your email address is not verified yet. Check your inbox for the verification link, then sign in again.');
+          setReady(true);
+          return;
+        }
       }
       setUser(nextUser);
       setReady(true);
@@ -111,9 +127,33 @@ export function FirebaseAuthGate({ children }) {
     setStatus('working');
     try {
       if (mode === 'create') {
-        await createUserWithEmailAndPassword(auth, trimmedEmail, password);
-      } else {
-        await signInWithEmailAndPassword(auth, trimmedEmail, password);
+        const cred = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+        try {
+          await sendEmailVerification(cred.user);
+        } catch (verifyErr) {
+          console.warn('sendEmailVerification failed:', verifyErr);
+        }
+        await firebaseSignOut(auth).catch(() => {});
+        setPassword('');
+        setMode('sign-in');
+        setInfo(
+          `Account created. We sent a verification link to ${trimmedEmail}. ` +
+          'Click it, then sign in below. (Check your spam folder if it does not arrive.)',
+        );
+        return;
+      }
+
+      const cred = await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      // Enforce email verification for everyone except the bootstrap super-admin.
+      if (!isSuperAdminEmail(cred.user.email) && !cred.user.emailVerified) {
+        try { await sendEmailVerification(cred.user); } catch { /* ignore */ }
+        await firebaseSignOut(auth).catch(() => {});
+        setPassword('');
+        setError(
+          'Your email address is not verified yet. We just sent a new verification link — ' +
+          'click it, then sign in again.',
+        );
+        return;
       }
       setPassword('');
     } catch (err) {
